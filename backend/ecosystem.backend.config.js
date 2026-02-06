@@ -1,6 +1,6 @@
 module.exports = {
   apps: [
-    // ✅ Backend API Server (Fastify)
+    // ✅ Backend API Server (Fastify) + встроенный Telegram Bot
     {
       name: 'dxcapai-backend',
       script: 'dist/server.js',
@@ -39,37 +39,9 @@ module.exports = {
       // ✅ Graceful shutdown
       listen_timeout: 10000,
       shutdown_with_message: true
-    },
-    
-    // ✅ Telegram Bot (опционально, если хотите отдельно)
-    {
-      name: 'dxcapai-telegram-bot',
-      script: 'dist/bot/telegram-bot.js',
-      
-      cwd: '/home/dxdx-repo/backend',
-      
-      instances: 1,
-      exec_mode: 'fork',
-      
-      env: {
-        NODE_ENV: 'production'
-      },
-      
-      env_file: './.env',
-      
-      max_memory_restart: '512M',
-      min_uptime: '10s',
-      max_restarts: 10,
-      
-      log_file: './logs/telegram-bot.log',
-      out_file: './logs/telegram-bot-out.log',
-      error_file: './logs/telegram-bot-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      
-      watch: false,
-      autorestart: true,
-      
-      kill_timeout: 5000
     }
+    
+    // ✅ УБРАЛИ: отдельный процесс Telegram бота
+    // Бот теперь запускается внутри backend (dist/server.js)
   ]
 };

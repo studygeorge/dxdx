@@ -473,6 +473,7 @@ export default function Home() {
         opacity: showLoading ? 0 : 1,
         transition: 'opacity 0.8s ease-in-out',
         overflowX: 'hidden',
+        overflowY: 'auto',
         width: '100%',
         maxWidth: '100vw'
       }}>

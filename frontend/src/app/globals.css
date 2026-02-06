@@ -21,6 +21,7 @@
     color: white;
     min-height: 100vh;
     overflow-x: hidden;
+    overflow-y: auto; /* ✅ ВАЖНО: разрешаем вертикальный скролл */
     position: relative;
   }
 

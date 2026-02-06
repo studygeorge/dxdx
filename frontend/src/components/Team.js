@@ -97,9 +97,10 @@ export default function Team({ isMobile, isTablet }) {
   const section4Ref = useRef(null)
   const leaderRef = useRef(null)
 
-  // ✅ ИСПРАВЛЕНО: Принудительная загрузка и воспроизведение видео
+  // ✅ КРИТИЧНО: На мобильном НЕ загружаем видео до взаимодействия
   useEffect(() => {
-    if (videoRef.current) {
+    if (videoRef.current && !isMobile) {
+      // Только на desktop сразу грузим
       videoRef.current.load()
       const playPromise = videoRef.current.play()
       if (playPromise !== undefined) {
@@ -108,7 +109,7 @@ export default function Team({ isMobile, isTablet }) {
         })
       }
     }
-  }, [])
+  }, [isMobile])
 
   useEffect(() => {
     const observerOptions = {
@@ -164,38 +165,34 @@ export default function Team({ isMobile, isTablet }) {
       minHeight: '100vh',
       overflow: 'hidden'
     }}>
-      {/* ✅ ИСПРАВЛЕНО: VIDEO BACKGROUND с Tiffany эффектом */}
-      <video
-        ref={videoRef}
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload="auto"
-        onLoadedData={() => setVideoLoaded(true)}
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          opacity: videoLoaded ? 0.4 : 0,
-          transition: 'opacity 0.6s ease-in',
-          zIndex: -2
-        }}
-      >
-        <source 
-          src="/profile/Teammobile.mp4" 
-          type="video/mp4" 
-          media="(max-width: 768px)" 
-        />
-        <source 
-          src="/profile/Teampc.mp4" 
-          type="video/mp4" 
-          media="(min-width: 769px)" 
-        />
-      </video>
+      {/* ✅ КРИТИЧНО: На мобильном ОТКЛЮЧАЕМ видео полностью */}
+      {!isMobile && (
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          onLoadedData={() => setVideoLoaded(true)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            opacity: videoLoaded ? 0.4 : 0,
+            transition: 'opacity 0.6s ease-in',
+            zIndex: -2
+          }}
+        >
+          <source 
+            src="/profile/Teampc.mp4" 
+            type="video/mp4" 
+          />
+        </video>
+      )}
 
       {/* ✅ GRADIENT OVERLAY - Tiffany эффект */}
       <div style={{
@@ -532,8 +529,10 @@ export default function Team({ isMobile, isTablet }) {
                     objectFit: 'cover',
                     objectPosition: 'center top'
                   }}
-                  quality={100}
-                  priority
+                  quality={isMobile ? 60 : 85}
+                  loading="lazy"
+                  placeholder="blur"
+                  blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwABmQAAP/2Q=="
                 />
               </div>
             </div>

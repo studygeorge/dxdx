@@ -8,6 +8,7 @@ import Team from '../../components/Team';
 export default function TeamPage() {
   const [mounted, setMounted] = useState(false);
   const [windowWidth, setWindowWidth] = useState(1400);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setMounted(true);
@@ -19,8 +20,46 @@ export default function TeamPage() {
     }
   }, []);
 
+  useEffect(() => {
+    // ✅ КРИТИЧНО: Быстро убираем лоадер
+    const timer = setTimeout(() => setLoading(false), 200);
+    return () => clearTimeout(timer);
+  }, []);
+
   if (!mounted) {
     return null;
+  }
+
+  if (loading) {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: '#000',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 99999
+      }}>
+        <div style={{
+          width: '50px',
+          height: '50px',
+          border: '3px solid rgba(45, 212, 191, 0.3)',
+          borderTop: '3px solid #2dd4bf',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }} />
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
   }
 
   const isMobile = windowWidth < 768;

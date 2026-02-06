@@ -238,12 +238,17 @@ export default function Home() {
   }, [mounted])
 
   useEffect(() => {
-    if (backgroundVideoRef.current && !showLoading) {
-      console.log('🎥 Loading background video')
+    // ✅ КРИТИЧНО: на мобильном НЕ грузим фоновое видео (оно вызывает зависание!)
+    const isMobile = window.innerWidth <= 768
+    
+    if (backgroundVideoRef.current && !showLoading && !isMobile) {
+      console.log('🎥 Loading background video (desktop only)')
       backgroundVideoRef.current.load()
       backgroundVideoRef.current.play().catch((err) => {
         console.error('❌ Background video play failed:', err)
       })
+    } else if (isMobile) {
+      console.log('📱 Mobile detected - SKIPPING background video')
     }
   }, [showLoading])
 
@@ -518,41 +523,44 @@ export default function Home() {
           overflow: 'hidden',
           pointerEvents: 'none'
         }}>
-          <video
-            ref={backgroundVideoRef}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="auto"
-            onLoadedData={() => {
-              console.log('✅ Background video loaded')
-              setBackgroundVideoLoaded(true)
-            }}
-            onError={(e) => {
-              console.error('❌ Background video error:', e)
-            }}
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              minWidth: '100%',
-              minHeight: '100%',
-              width: 'auto',
-              height: 'auto',
-              transform: 'translate(-50%, -50%)',
-              objectFit: 'cover',
-              opacity: backgroundVideoLoaded ? 0.55 : 0,
-              filter: 'brightness(1.2) contrast(1.1)',
-              transition: 'opacity 0.5s ease-in',
-              willChange: 'auto'
-            }}
-          >
-            <source
-              src={isMobile ? '/profile/Homepagemobile.mp4' : '/profile/Homepagepk.mp4'}
-              type="video/mp4"
-            />
-          </video>
+          {/* ✅ КРИТИЧНО: на мобильном НЕ рендерим видео (вызывает зависание!) */}
+          {!isMobile && (
+            <video
+              ref={backgroundVideoRef}
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="auto"
+              onLoadedData={() => {
+                console.log('✅ Background video loaded')
+                setBackgroundVideoLoaded(true)
+              }}
+              onError={(e) => {
+                console.error('❌ Background video error:', e)
+              }}
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                minWidth: '100%',
+                minHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                transform: 'translate(-50%, -50%)',
+                objectFit: 'cover',
+                opacity: backgroundVideoLoaded ? 0.55 : 0,
+                filter: 'brightness(1.2) contrast(1.1)',
+                transition: 'opacity 0.5s ease-in',
+                willChange: 'auto'
+              }}
+            >
+              <source
+                src="/profile/Homepagepk.mp4"
+                type="video/mp4"
+              />
+            </video>
+          )}
           
           <div style={{
             position: 'absolute',

@@ -230,11 +230,13 @@ export default function Home() {
       touchStartY = e.touches[0].clientY
     }
 
-    document.addEventListener('touchstart', handleTouchStart, { passive: true })
-    document.addEventListener('touchmove', preventPullToRefresh, { passive: false })
+    // ✅ ТОЛЬКО для мобильных устройств
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      document.addEventListener('touchstart', handleTouchStart, { passive: true })
+      document.addEventListener('touchmove', preventPullToRefresh, { passive: false })
+    }
 
-    document.body.style.overscrollBehavior = 'none'
-    document.documentElement.style.overscrollBehavior = 'none'
+    // ✅ ИСПРАВЛЕНО: не блокируем overscroll, только прячем горизонтальный overflow
     document.body.style.overflowX = 'hidden'
     document.documentElement.style.overflowX = 'hidden'
 
@@ -242,10 +244,8 @@ export default function Home() {
       document.removeEventListener('touchstart', handleTouchStart)
       document.removeEventListener('touchmove', preventPullToRefresh)
       
-      document.body.style.overscrollBehavior = 'auto'
-      document.documentElement.style.overscrollBehavior = 'auto'
-      document.body.style.overflowX = 'auto'
-      document.documentElement.style.overflowX = 'auto'
+      document.body.style.overflowX = 'visible'
+      document.documentElement.style.overflowX = 'visible'
     }
   }, [])
 
@@ -468,12 +468,10 @@ export default function Home() {
         background: '#000000',
         color: 'white',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        overscrollBehavior: 'none',
         WebkitOverflowScrolling: 'touch',
         opacity: showLoading ? 0 : 1,
         transition: 'opacity 0.8s ease-in-out',
         overflowX: 'hidden',
-        overflowY: 'auto',
         width: '100%',
         maxWidth: '100vw'
       }}>

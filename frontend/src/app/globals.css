@@ -13,6 +13,8 @@
     scroll-behavior: smooth;
     background: #000000;
     height: 100%;
+    overflow-x: hidden; /* ✅ Только горизонтальный скролл блокируем */
+    overflow-y: scroll; /* ✅ ВАЖНО: всегда показываем вертикальный скролл */
   }
   
   body {
@@ -20,8 +22,7 @@
     background: #000000;
     color: white;
     min-height: 100vh;
-    overflow-x: hidden;
-    overflow-y: auto; /* ✅ ВАЖНО: разрешаем вертикальный скролл */
+    overflow-x: hidden; /* ✅ Только горизонтальный скролл блокируем */
     position: relative;
   }
 

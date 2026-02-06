@@ -78,17 +78,34 @@ export default function Home() {
   }, [searchParams])
 
   useEffect(() => {
-    // ✅ ИСПРАВЛЕНО: на мобильном вообще отключаем загрузочное видео
-    const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+    // ✅ ИСПРАВЛЕНО: более надёжная проверка мобильного + обязательный таймаут
+    const isMobileUA = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    const isMobileScreen = window.innerWidth <= 768
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+    const isMobileDevice = isMobileUA || isMobileScreen || isTouchDevice
+    
     const hasSeenLoading = sessionStorage.getItem('hasSeenLoadingVideo')
     
     console.log('🎬 Has seen loading video:', hasSeenLoading)
-    console.log('📱 Is mobile device:', isMobileDevice)
+    console.log('📱 Is mobile device:', isMobileDevice, {
+      userAgent: isMobileUA,
+      screen: isMobileScreen,
+      touch: isTouchDevice,
+      width: window.innerWidth
+    })
+    
+    // ВСЕГДА ставим таймаут безопасности - максимум 3 секунды ожидания на любом устройстве
+    const emergencyTimeout = setTimeout(() => {
+      console.warn('🚨 EMERGENCY: Force hiding loading screen after 3s')
+      setShowLoading(false)
+      sessionStorage.setItem('hasSeenLoadingVideo', 'true')
+    }, 3000)
     
     if (hasSeenLoading || isMobileDevice) {
       console.log('⏭️ Skipping loading video (already seen or mobile)')
+      clearTimeout(emergencyTimeout)
       setShowLoading(false)
-      return
+      return () => clearTimeout(emergencyTimeout)
     }
 
     const videoElement = loadingVideoRef.current
@@ -198,6 +215,7 @@ export default function Home() {
       videoElement.load()
 
       return () => {
+        clearTimeout(emergencyTimeout)
         if (timeoutId) clearTimeout(timeoutId)
         if (autoSkipTimeout) clearTimeout(autoSkipTimeout)
         videoElement.removeEventListener('progress', handleProgress)
@@ -208,6 +226,8 @@ export default function Home() {
         videoElement.removeEventListener('error', handleError)
         videoElement.removeEventListener('stalled', handleStalled)
       }
+    } else {
+      return () => clearTimeout(emergencyTimeout)
     }
   }, [mounted])
 

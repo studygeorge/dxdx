@@ -28,3 +28,8 @@ uploads/
 
 # Prisma
 prisma/*.db
+
+# Core dumps
+core
+core.*
+*.core

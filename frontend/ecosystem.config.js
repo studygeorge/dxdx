@@ -1,28 +1,30 @@
 module.exports = {
   apps: [
     {
-      name: 'dxcapai',
-      // ✅ ВЕРНУЛИ: обычный next start
+      name: 'dxcapai-frontend',
       script: 'node_modules/.bin/next',
       args: 'start',
       
       instances: 1,
       exec_mode: 'fork',
       
-      cwd: '/home/dxcapai-app',
+      // ✅ ОБНОВЛЕНО: новый путь
+      cwd: '/home/dxdx-repo/frontend',
       
       env: {
         NODE_ENV: 'production',
-        PORT: 3000
+        PORT: 3000,
+        NEXT_PUBLIC_API_URL: 'https://dxcapital-ai.com/api'
       },
       
       max_memory_restart: '2G',
       min_uptime: '10s',
       max_restarts: 10,
       
-      log_file: '/home/dxcapai-app/logs/dxcapai.log',
-      out_file: '/home/dxcapai-app/logs/dxcapai-out.log',
-      error_file: '/home/dxcapai-app/logs/dxcapai-error.log',
+      // ✅ ОБНОВЛЕНО: новые пути логов
+      log_file: '/home/dxdx-repo/frontend/logs/dxcapai.log',
+      out_file: '/home/dxdx-repo/frontend/logs/dxcapai-out.log',
+      error_file: '/home/dxdx-repo/frontend/logs/dxcapai-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
       

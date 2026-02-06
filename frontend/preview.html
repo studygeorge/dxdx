@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DXCAPAI - Crypto Trading Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000000;
+            color: white;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+        
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 40px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            color: #2dd4bf;
+        }
+        
+        nav {
+            display: flex;
+            gap: 30px;
+        }
+        
+        nav a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+        
+        nav a:hover {
+            color: #2dd4bf;
+        }
+        
+        .hero {
+            text-align: center;
+            padding: 100px 20px;
+            position: relative;
+        }
+        
+        .hero h1 {
+            font-size: 80px;
+            font-weight: 800;
+            margin-bottom: 24px;
+            line-height: 1.1;
+        }
+        
+        .hero .accent {
+            color: #2dd4bf;
+        }
+        
+        .hero p {
+            font-size: 20px;
+            color: #2dd4bf;
+            max-width: 700px;
+            margin: 0 auto 40px;
+            line-height: 1.6;
+        }
+        
+        .cta-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 40px;
+        }
+        
+        .btn {
+            padding: 18px 40px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #14b8a6, #2dd4bf);
+            color: white;
+            border: none;
+            box-shadow: 0 8px 25px rgba(20, 184, 166, 0.3);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 35px rgba(20, 184, 166, 0.4);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 80px;
+        }
+        
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(45, 212, 191, 0.2);
+            border-radius: 24px;
+            padding: 40px;
+            transition: all 0.3s;
+        }
+        
+        .feature-card:hover {
+            border-color: rgba(45, 212, 191, 0.5);
+            transform: translateY(-5px);
+        }
+        
+        .feature-card h3 {
+            font-size: 24px;
+            color: #2dd4bf;
+            margin-bottom: 16px;
+        }
+        
+        .feature-card p {
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.6;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            margin: 80px 0;
+            text-align: center;
+        }
+        
+        .stat-item h2 {
+            font-size: 48px;
+            color: #2dd4bf;
+            margin-bottom: 8px;
+        }
+        
+        .stat-item p {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .background-effects {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        
+        .glow {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.08;
+        }
+        
+        .glow-1 {
+            top: 80px;
+            left: 20%;
+            width: 500px;
+            height: 500px;
+            background: #2dd4bf;
+        }
+        
+        .glow-2 {
+            top: 300px;
+            right: 15%;
+            width: 400px;
+            height: 400px;
+            background: #34d399;
+            opacity: 0.06;
+        }
+        
+        .glow-3 {
+            bottom: 20%;
+            left: 10%;
+            width: 350px;
+            height: 350px;
+            background: #22d3ee;
+            opacity: 0.05;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 40px;
+            margin-top: 100px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 48px;
+            }
+            
+            .hero p {
+                font-size: 16px;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                max-width: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background-effects">
+        <div class="glow glow-1"></div>
+        <div class="glow glow-2"></div>
+        <div class="glow glow-3"></div>
+    </div>
+    
+    <header>
+        <div class="logo">DXCAPAI</div>
+        <nav>
+            <a href="#features">Features</a>
+            <a href="#about">About</a>
+            <a href="#contact">Contact</a>
+        </nav>
+    </header>
+    
+    <div class="container">
+        <section class="hero">
+            <h1>
+                Invest in Crypto <br>
+                with <span class="accent">AI Intelligence</span>
+            </h1>
+            <p>
+                Professional trading platform with AI-powered strategies<br>
+                Earn passive income through smart investments
+            </p>
+            
+            <div class="cta-buttons">
+                <a href="#" class="btn btn-primary">Start Investing Now</a>
+                <a href="#features" class="btn btn-secondary">Learn More</a>
+            </div>
+        </section>
+        
+        <section class="stats">
+            <div class="stat-item">
+                <h2>$50M+</h2>
+                <p>Total Volume</p>
+            </div>
+            <div class="stat-item">
+                <h2>10K+</h2>
+                <p>Active Users</p>
+            </div>
+            <div class="stat-item">
+                <h2>98%</h2>
+                <p>Success Rate</p>
+            </div>
+            <div class="stat-item">
+                <h2>24/7</h2>
+                <p>Support</p>
+            </div>
+        </section>
+        
+        <section class="features" id="features">
+            <div class="feature-card">
+                <h3>🤖 AI Trading</h3>
+                <p>Advanced AI algorithms analyze market trends and execute profitable trades automatically</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>💰 Staking Rewards</h3>
+                <p>Earn passive income through our flexible staking plans with up to 15% APY</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🔗 Referral System</h3>
+                <p>Multi-level referral program with generous commissions for bringing new investors</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🔐 Secure Platform</h3>
+                <p>Bank-grade security with Web3 integration and multi-factor authentication</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>📊 Real-time Analytics</h3>
+                <p>Track your investments with detailed charts and performance metrics</p>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🌍 Global Access</h3>
+                <p>Trade from anywhere with our mobile-friendly platform in multiple languages</p>
+            </div>
+        </section>
+    </div>
+    
+    <footer>
+        <p>&copy; 2025 DXCAPAI. All rights reserved. | Professional Crypto Trading Platform</p>
+        <p style="margin-top: 10px; font-size: 14px;">
+            ⚠️ Note: This is a preview page. The actual Next.js application requires backend connection.
+        </p>
+    </footer>
+</body>
+</html>

@@ -19,7 +19,16 @@ export default function Home() {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [windowWidth, setWindowWidth] = useState(1400)
-  const [showLoading, setShowLoading] = useState(true)
+  
+  // ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: на мобильном НЕ показываем loading screen вообще
+  const isMobileInitial = typeof window !== 'undefined' && (
+    /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    window.innerWidth <= 768 ||
+    'ontouchstart' in window ||
+    navigator.maxTouchPoints > 0
+  )
+  
+  const [showLoading, setShowLoading] = useState(!isMobileInitial)
   const [fadeOut, setFadeOut] = useState(false)
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [videoLoaded, setVideoLoaded] = useState(false)
@@ -78,34 +87,34 @@ export default function Home() {
   }, [searchParams])
 
   useEffect(() => {
-    // ✅ ИСПРАВЛЕНО: более надёжная проверка мобильного + обязательный таймаут
+    // ✅ ПРОСТОЕ РЕШЕНИЕ: на мобильном вообще не запускаем логику loading video
     const isMobileUA = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
     const isMobileScreen = window.innerWidth <= 768
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
     const isMobileDevice = isMobileUA || isMobileScreen || isTouchDevice
     
-    const hasSeenLoading = sessionStorage.getItem('hasSeenLoadingVideo')
-    
-    console.log('🎬 Has seen loading video:', hasSeenLoading)
-    console.log('📱 Is mobile device:', isMobileDevice, {
+    console.log('📱 Mobile detection:', {
       userAgent: isMobileUA,
       screen: isMobileScreen,
       touch: isTouchDevice,
+      isMobile: isMobileDevice,
       width: window.innerWidth
     })
     
-    // ВСЕГДА ставим таймаут безопасности - максимум 3 секунды ожидания на любом устройстве
-    const emergencyTimeout = setTimeout(() => {
-      console.warn('🚨 EMERGENCY: Force hiding loading screen after 3s')
+    if (isMobileDevice) {
+      console.log('📱 Mobile device detected - SKIPPING loading video completely')
       setShowLoading(false)
-      sessionStorage.setItem('hasSeenLoadingVideo', 'true')
-    }, 3000)
+      return
+    }
     
-    if (hasSeenLoading || isMobileDevice) {
-      console.log('⏭️ Skipping loading video (already seen or mobile)')
-      clearTimeout(emergencyTimeout)
+    // Для десктопа проверяем sessionStorage
+    const hasSeenLoading = sessionStorage.getItem('hasSeenLoadingVideo')
+    console.log('🎬 Has seen loading video:', hasSeenLoading)
+    
+    if (hasSeenLoading) {
+      console.log('⏭️ Skipping loading video (already seen)')
       setShowLoading(false)
-      return () => clearTimeout(emergencyTimeout)
+      return
     }
 
     const videoElement = loadingVideoRef.current
@@ -215,7 +224,6 @@ export default function Home() {
       videoElement.load()
 
       return () => {
-        clearTimeout(emergencyTimeout)
         if (timeoutId) clearTimeout(timeoutId)
         if (autoSkipTimeout) clearTimeout(autoSkipTimeout)
         videoElement.removeEventListener('progress', handleProgress)
@@ -226,8 +234,6 @@ export default function Home() {
         videoElement.removeEventListener('error', handleError)
         videoElement.removeEventListener('stalled', handleStalled)
       }
-    } else {
-      return () => clearTimeout(emergencyTimeout)
     }
   }, [mounted])
 

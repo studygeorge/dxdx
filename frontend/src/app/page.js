@@ -518,11 +518,11 @@ export default function Home() {
         background: '#000000',
         color: 'white',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        overscrollBehavior: 'none',
         WebkitOverflowScrolling: 'touch',
         opacity: showLoading ? 0 : 1,
         transition: 'opacity 0.8s ease-in-out',
         overflowX: 'hidden',
+        overflowY: 'visible',
         width: '100%',
         maxWidth: '100vw'
       }}>

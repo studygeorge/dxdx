@@ -78,11 +78,15 @@ export default function Home() {
   }, [searchParams])
 
   useEffect(() => {
+    // ✅ ИСПРАВЛЕНО: на мобильном вообще отключаем загрузочное видео
+    const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
     const hasSeenLoading = sessionStorage.getItem('hasSeenLoadingVideo')
-    console.log('🎬 Has seen loading video:', hasSeenLoading)
     
-    if (hasSeenLoading) {
-      console.log('⏭️ Skipping loading video (already seen)')
+    console.log('🎬 Has seen loading video:', hasSeenLoading)
+    console.log('📱 Is mobile device:', isMobileDevice)
+    
+    if (hasSeenLoading || isMobileDevice) {
+      console.log('⏭️ Skipping loading video (already seen or mobile)')
       setShowLoading(false)
       return
     }
@@ -94,11 +98,13 @@ export default function Home() {
       let timeoutId = null
       let autoSkipTimeout = null
 
-      // ✅ НОВОЕ: автоматический пропуск через 10 секунд, если видео не загрузилось
+      // Для десктопа оставляем 8 сек
+      const skipTimeout = 8000
+      
       autoSkipTimeout = setTimeout(() => {
-        console.warn('⚠️ Loading video timeout (10s), auto-skipping')
+        console.warn(`⚠️ Loading video timeout (${skipTimeout/1000}s), auto-skipping`)
         handleSkipVideo()
-      }, 10000)
+      }, skipTimeout)
 
       const handleProgress = () => {
         if (videoElement.buffered.length > 0) {

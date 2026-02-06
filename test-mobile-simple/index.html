@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ТЕСТ - DXCAPITAL Mobile</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #2dd4bf;
+            text-align: center;
+        }
+        
+        .status {
+            background: rgba(45, 212, 191, 0.1);
+            border: 2px solid #2dd4bf;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .status h2 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #2dd4bf;
+        }
+        
+        .info {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .label {
+            color: #94a3b8;
+        }
+        
+        .value {
+            color: #2dd4bf;
+            font-weight: bold;
+        }
+        
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: #2dd4bf;
+            color: #0f172a;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 10px;
+            text-decoration: none;
+            text-align: center;
+        }
+        
+        .btn:active {
+            transform: scale(0.98);
+        }
+        
+        .success {
+            background: rgba(34, 197, 94, 0.2);
+            border: 2px solid #22c55e;
+            color: #22c55e;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        #log {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .log-item {
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 ТЕСТ МОБИЛЬНОЙ ВЕРСИИ</h1>
+        
+        <div class="status">
+            <h2>✅ Сервер работает!</h2>
+            <p>Если ты видишь эту страницу - сервер и Nginx работают нормально</p>
+        </div>
+        
+        <div class="info">
+            <div class="info-item">
+                <span class="label">Устройство:</span>
+                <span class="value" id="device">Определяется...</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Ширина экрана:</span>
+                <span class="value" id="width">-</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Высота экрана:</span>
+                <span class="value" id="height">-</span>
+            </div>
+            <div class="info-item">
+                <span class="label">User Agent:</span>
+                <span class="value" id="ua" style="font-size: 10px; word-break: break-all;">-</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Тач-скрин:</span>
+                <span class="value" id="touch">-</span>
+            </div>
+        </div>
+        
+        <a href="https://dxcapital-ai.com" class="btn">
+            🏠 Перейти на главную DXCAPITAL
+        </a>
+        
+        <button class="btn" onclick="testAPI()">
+            🔧 Протестировать API
+        </button>
+        
+        <button class="btn" onclick="testScroll()">
+            📜 Протестировать скролл
+        </button>
+        
+        <div id="apiResult"></div>
+        
+        <div id="log">
+            <strong>Лог загрузки:</strong>
+            <div id="logItems"></div>
+        </div>
+        
+        <!-- Контент для проверки скролла -->
+        <div style="margin-top: 40px; display: none;" id="scrollTest">
+            <h2 style="color: #2dd4bf; margin-bottom: 20px;">Тест скролла</h2>
+            <div style="height: 2000px; background: linear-gradient(to bottom, rgba(45, 212, 191, 0.1), rgba(45, 212, 191, 0));">
+                <p style="padding: 20px; text-align: center;">Прокрути вниз ⬇️</p>
+                <p style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 20px; background: #2dd4bf; color: #0f172a; border-radius: 10px; font-weight: bold;">
+                    🎉 Скролл работает!
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Логирование
+        function log(message) {
+            const logItems = document.getElementById('logItems');
+            const item = document.createElement('div');
+            item.className = 'log-item';
+            item.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logItems.appendChild(item);
+            console.log(message);
+        }
+        
+        log('✅ Страница загружена');
+        
+        // Определение устройства
+        function detectDevice() {
+            const ua = navigator.userAgent;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            
+            let device = 'Desktop';
+            if (/iPhone/i.test(ua)) device = 'iPhone';
+            else if (/iPad/i.test(ua)) device = 'iPad';
+            else if (/Android/i.test(ua)) device = 'Android';
+            else if (width <= 768) device = 'Mobile (by width)';
+            
+            document.getElementById('device').textContent = device;
+            document.getElementById('width').textContent = width + 'px';
+            document.getElementById('height').textContent = height + 'px';
+            document.getElementById('ua').textContent = ua;
+            document.getElementById('touch').textContent = hasTouch ? '✅ Да' : '❌ Нет';
+            
+            log(`📱 Устройство: ${device} (${width}x${height})`);
+            log(`👆 Тач: ${hasTouch ? 'Да' : 'Нет'}`);
+        }
+        
+        detectDevice();
+        window.addEventListener('resize', detectDevice);
+        
+        // Тест API
+        async function testAPI() {
+            log('🔧 Тестирую API...');
+            const result = document.getElementById('apiResult');
+            result.innerHTML = '<div style="background: rgba(45, 212, 191, 0.1); padding: 15px; border-radius: 10px; margin-top: 20px;">⏳ Запрос к API...</div>';
+            
+            try {
+                const response = await fetch('https://dxcapital-ai.com/api/v1/health');
+                const data = await response.json();
+                log('✅ API ответил: ' + JSON.stringify(data));
+                result.innerHTML = `<div class="success">✅ API работает! Status: ${data.status || 'OK'}</div>`;
+            } catch (error) {
+                log('❌ Ошибка API: ' + error.message);
+                result.innerHTML = `<div style="background: rgba(239, 68, 68, 0.2); border: 2px solid #ef4444; color: #ef4444; padding: 15px; border-radius: 10px; margin-top: 20px;">❌ API не отвечает: ${error.message}</div>`;
+            }
+        }
+        
+        // Тест скролла
+        function testScroll() {
+            log('📜 Показываю тест скролла');
+            document.getElementById('scrollTest').style.display = 'block';
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 100);
+        }
+        
+        // Проверка скролла
+        let lastScrollTop = 0;
+        window.addEventListener('scroll', () => {
+            const st = window.pageYOffset || document.documentElement.scrollTop;
+            if (st !== lastScrollTop) {
+                log(`📜 Скролл работает: ${Math.round(st)}px`);
+                lastScrollTop = st;
+            }
+        }, { passive: true });
+        
+        log('🎉 Инициализация завершена');
+    </script>
+</body>
+</html>

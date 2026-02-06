@@ -19,7 +19,16 @@ export default function Home() {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [windowWidth, setWindowWidth] = useState(1400)
-  const [showLoading, setShowLoading] = useState(true)
+  
+  // ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: на мобильном НЕ показываем loading screen вообще
+  const isMobileInitial = typeof window !== 'undefined' && (
+    /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    window.innerWidth <= 768 ||
+    'ontouchstart' in window ||
+    navigator.maxTouchPoints > 0
+  )
+  
+  const [showLoading, setShowLoading] = useState(!isMobileInitial)
   const [fadeOut, setFadeOut] = useState(false)
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [videoLoaded, setVideoLoaded] = useState(false)
@@ -27,7 +36,6 @@ export default function Home() {
   const searchParams = useSearchParams()
 
   const [showRegisterModal, setShowRegisterModal] = useState(false)
-  const [isNavigating, setIsNavigating] = useState(false) // ✅ НОВОЕ: состояние навигации
 
   const backgroundVideoRef = useRef(null)
   const loadingVideoRef = useRef(null)
@@ -79,6 +87,27 @@ export default function Home() {
   }, [searchParams])
 
   useEffect(() => {
+    // ✅ ПРОСТОЕ РЕШЕНИЕ: на мобильном вообще не запускаем логику loading video
+    const isMobileUA = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    const isMobileScreen = window.innerWidth <= 768
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+    const isMobileDevice = isMobileUA || isMobileScreen || isTouchDevice
+    
+    console.log('📱 Mobile detection:', {
+      userAgent: isMobileUA,
+      screen: isMobileScreen,
+      touch: isTouchDevice,
+      isMobile: isMobileDevice,
+      width: window.innerWidth
+    })
+    
+    if (isMobileDevice) {
+      console.log('📱 Mobile device detected - SKIPPING loading video completely')
+      setShowLoading(false)
+      return
+    }
+    
+    // Для десктопа проверяем sessionStorage
     const hasSeenLoading = sessionStorage.getItem('hasSeenLoadingVideo')
     console.log('🎬 Has seen loading video:', hasSeenLoading)
     
@@ -95,11 +124,13 @@ export default function Home() {
       let timeoutId = null
       let autoSkipTimeout = null
 
-      // ✅ НОВОЕ: автоматический пропуск через 10 секунд, если видео не загрузилось
+      // Для десктопа оставляем 8 сек
+      const skipTimeout = 8000
+      
       autoSkipTimeout = setTimeout(() => {
-        console.warn('⚠️ Loading video timeout (10s), auto-skipping')
+        console.warn(`⚠️ Loading video timeout (${skipTimeout/1000}s), auto-skipping`)
         handleSkipVideo()
-      }, 10000)
+      }, skipTimeout)
 
       const handleProgress = () => {
         if (videoElement.buffered.length > 0) {
@@ -125,23 +156,24 @@ export default function Home() {
         if (!playAttempted) {
           playAttempted = true
           
-          // ✅ КРИТИЧНО: немедленный запуск видео
-          const playPromise = videoElement.play()
-          
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                console.log('✅ Loading video playing successfully')
-                if (timeoutId) {
-                  clearTimeout(timeoutId)
-                  timeoutId = null
-                }
-              })
-              .catch(err => {
-                console.error('❌ Autoplay blocked:', err)
-                setShowPlayButton(true)
-              })
-          }
+          setTimeout(() => {
+            const playPromise = videoElement.play()
+            
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  console.log('✅ Loading video playing successfully')
+                  if (timeoutId) {
+                    clearTimeout(timeoutId)
+                    timeoutId = null
+                  }
+                })
+                .catch(err => {
+                  console.error('❌ Autoplay blocked:', err)
+                  setShowPlayButton(true)
+                })
+            }
+          }, 300)
         }
 
         timeoutId = setTimeout(() => {
@@ -189,15 +221,7 @@ export default function Home() {
       videoElement.addEventListener('error', handleError)
       videoElement.addEventListener('stalled', handleStalled)
 
-      // ✅ КРИТИЧНО: Немедленная загрузка и попытка запуска
       videoElement.load()
-      
-      // ✅ АГРЕССИВНАЯ попытка автоплея СРАЗУ после load
-      setTimeout(() => {
-        videoElement.play().catch(err => {
-          console.log('⚠️ Initial autoplay blocked (expected on mobile):', err)
-        })
-      }, 100)
 
       return () => {
         if (timeoutId) clearTimeout(timeoutId)
@@ -214,31 +238,17 @@ export default function Home() {
   }, [mounted])
 
   useEffect(() => {
-    if (backgroundVideoRef.current && !showLoading) {
-      console.log('🎥 Loading background video')
-      const bgVideo = backgroundVideoRef.current
-      
-      // ✅ АГРЕССИВНАЯ загрузка и запуск
-      bgVideo.load()
-      
-      // Попытка 1: Сразу
-      bgVideo.play().catch((err) => {
-        console.log('⚠️ Background video autoplay attempt 1:', err)
+    // ✅ КРИТИЧНО: на мобильном НЕ грузим фоновое видео (оно вызывает зависание!)
+    const isMobile = window.innerWidth <= 768
+    
+    if (backgroundVideoRef.current && !showLoading && !isMobile) {
+      console.log('🎥 Loading background video (desktop only)')
+      backgroundVideoRef.current.load()
+      backgroundVideoRef.current.play().catch((err) => {
+        console.error('❌ Background video play failed:', err)
       })
-      
-      // Попытка 2: Через 500ms
-      setTimeout(() => {
-        bgVideo.play().catch((err) => {
-          console.log('⚠️ Background video autoplay attempt 2:', err)
-        })
-      }, 500)
-      
-      // Попытка 3: Через 1000ms
-      setTimeout(() => {
-        bgVideo.play().catch((err) => {
-          console.log('⚠️ Background video autoplay attempt 3:', err)
-        })
-      }, 1000)
+    } else if (isMobile) {
+      console.log('📱 Mobile detected - SKIPPING background video')
     }
   }, [showLoading])
 
@@ -255,47 +265,26 @@ export default function Home() {
 
     const handleTouchStart = (e) => {
       touchStartY = e.touches[0].clientY
-      
-      // ✅ КРИТИЧНО: При ЛЮБОМ touch запускаем ВСЕ видео!
-      if (loadingVideoRef.current && !loadingVideoRef.current.paused === false) {
-        loadingVideoRef.current.play().catch(err => console.log('Loading video play attempt:', err))
-      }
-      if (backgroundVideoRef.current && !showLoading && backgroundVideoRef.current.paused) {
-        backgroundVideoRef.current.play().catch(err => console.log('Background video play attempt:', err))
-      }
-    }
-    
-    // ✅ НОВОЕ: При любом клике запускаем видео
-    const handleClick = () => {
-      if (loadingVideoRef.current && loadingVideoRef.current.paused) {
-        loadingVideoRef.current.play().catch(err => console.log('Loading video play attempt:', err))
-      }
-      if (backgroundVideoRef.current && !showLoading && backgroundVideoRef.current.paused) {
-        backgroundVideoRef.current.play().catch(err => console.log('Background video play attempt:', err))
-      }
     }
 
-    document.addEventListener('touchstart', handleTouchStart, { passive: true })
-    document.addEventListener('touchmove', preventPullToRefresh, { passive: false })
-    document.addEventListener('click', handleClick, { passive: true })
+    // ✅ ТОЛЬКО для мобильных устройств
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      document.addEventListener('touchstart', handleTouchStart, { passive: true })
+      document.addEventListener('touchmove', preventPullToRefresh, { passive: false })
+    }
 
-    // ✅ ИСПРАВЛЕНО: разрешаем вертикальный скролл
+    // ✅ ИСПРАВЛЕНО: не блокируем overscroll, только прячем горизонтальный overflow
     document.body.style.overflowX = 'hidden'
-    document.body.style.overflowY = 'auto'
     document.documentElement.style.overflowX = 'hidden'
-    document.documentElement.style.overflowY = 'auto'
 
     return () => {
       document.removeEventListener('touchstart', handleTouchStart)
       document.removeEventListener('touchmove', preventPullToRefresh)
-      document.removeEventListener('click', handleClick)
       
-      document.body.style.overflowX = 'auto'
-      document.body.style.overflowY = 'auto'
-      document.documentElement.style.overflowX = 'auto'
-      document.documentElement.style.overflowY = 'auto'
+      document.body.style.overflowX = 'visible'
+      document.documentElement.style.overflowX = 'visible'
     }
-  }, [showLoading])
+  }, [])
 
   const handleStartInvesting = () => {
     console.log('🚀 Opening Register Modal')
@@ -304,7 +293,6 @@ export default function Home() {
 
   const handleLearnMore = () => {
     console.log('📍 Navigating to /directions')
-    setIsNavigating(true) // ✅ ПОКАЗЫВАЕМ ЗАГРУЗКУ СРАЗУ
     router.push('/directions')
   }
 
@@ -485,7 +473,6 @@ export default function Home() {
 
           <video
             ref={loadingVideoRef}
-            autoPlay
             muted
             playsInline
             preload="auto"
@@ -518,7 +505,6 @@ export default function Home() {
         background: '#000000',
         color: 'white',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        overscrollBehavior: 'none',
         WebkitOverflowScrolling: 'touch',
         opacity: showLoading ? 0 : 1,
         transition: 'opacity 0.8s ease-in-out',
@@ -537,41 +523,44 @@ export default function Home() {
           overflow: 'hidden',
           pointerEvents: 'none'
         }}>
-          <video
-            ref={backgroundVideoRef}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="auto"
-            onLoadedData={() => {
-              console.log('✅ Background video loaded')
-              setBackgroundVideoLoaded(true)
-            }}
-            onError={(e) => {
-              console.error('❌ Background video error:', e)
-            }}
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              minWidth: '100%',
-              minHeight: '100%',
-              width: 'auto',
-              height: 'auto',
-              transform: 'translate(-50%, -50%)',
-              objectFit: 'cover',
-              opacity: backgroundVideoLoaded ? 0.55 : 0,
-              filter: 'brightness(1.2) contrast(1.1)',
-              transition: 'opacity 0.5s ease-in',
-              willChange: 'auto'
-            }}
-          >
-            <source
-              src={isMobile ? '/profile/Homepagemobile.mp4' : '/profile/Homepagepk.mp4'}
-              type="video/mp4"
-            />
-          </video>
+          {/* ✅ КРИТИЧНО: на мобильном НЕ рендерим видео (вызывает зависание!) */}
+          {!isMobile && (
+            <video
+              ref={backgroundVideoRef}
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="auto"
+              onLoadedData={() => {
+                console.log('✅ Background video loaded')
+                setBackgroundVideoLoaded(true)
+              }}
+              onError={(e) => {
+                console.error('❌ Background video error:', e)
+              }}
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                minWidth: '100%',
+                minHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                transform: 'translate(-50%, -50%)',
+                objectFit: 'cover',
+                opacity: backgroundVideoLoaded ? 0.55 : 0,
+                filter: 'brightness(1.2) contrast(1.1)',
+                transition: 'opacity 0.5s ease-in',
+                willChange: 'auto'
+              }}
+            >
+              <source
+                src="/profile/Homepagepk.mp4"
+                type="video/mp4"
+              />
+            </video>
+          )}
           
           <div style={{
             position: 'absolute',
@@ -1052,38 +1041,6 @@ export default function Home() {
           </div>
         </main>
 
-        {/* ✅ НОВОЕ: Индикатор загрузки при навигации */}
-        {isNavigating && (
-          <div style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
-            background: 'rgba(0, 0, 0, 0.8)',
-            backdropFilter: 'blur(10px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'column',
-            gap: '20px'
-          }}>
-            <div style={{
-              width: '60px',
-              height: '60px',
-              border: '4px solid rgba(45, 212, 191, 0.2)',
-              borderTop: '4px solid #2dd4bf',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
-            }} />
-            <p style={{
-              color: 'white',
-              fontSize: '18px',
-              fontWeight: '600'
-            }}>
-              Загрузка...
-            </p>
-          </div>
-        )}
-
         <Footer isMobile={isMobile} isTablet={isTablet} />
         
         <TelegramSupport />
@@ -1101,15 +1058,6 @@ export default function Home() {
             66% {
               transform: translateY(15px) translateX(-15px);
               opacity: 0.4;
-            }
-          }
-
-          @keyframes spin {
-            0% {
-              transform: rotate(0deg);
-            }
-            100% {
-              transform: rotate(360deg);
             }
           }
 

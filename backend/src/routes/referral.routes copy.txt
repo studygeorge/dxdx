@@ -1,0 +1,1367 @@
+// dxcapai-backend/src/routes/referrals.routes.ts
+
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
+import { authenticate } from '../middleware/auth.middleware'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
+
+interface ReferralData {
+  fullUserId: string
+  userIdShort: string
+  email: string | null
+  joinedAt: Date
+  investmentId: string
+  investmentAmount: number
+  investmentDate: Date
+  commission: number
+  bonusWithdrawn: boolean
+  withdrawnAt: Date | null
+}
+
+interface WithdrawBonusBody {
+  referralUserId: string
+  investmentId: string
+  trc20Address: string
+}
+
+interface WithdrawalStatusParams {
+  withdrawalId: string
+}
+
+interface ApproveRejectBody {
+  supportUserId?: string
+  reason?: string
+}
+
+interface BulkWithdrawBody {
+  trc20Address: string
+}
+
+interface ReinvestBody {
+  investmentId: string
+}
+
+// Функция расчёта tiered-комиссии для первого уровня
+function calculateTierPercent(level1Count: number): number {
+  if (level1Count >= 10) return 0.07
+  if (level1Count >= 6) return 0.06
+  if (level1Count >= 4) return 0.05
+  if (level1Count >= 2) return 0.04
+  return 0.03
+}
+
+export async function referralRoutes(fastify: FastifyInstance) {
+  
+  // ✅ GET /my-referrals - С TIERED-КОМИССИЕЙ
+  fastify.get('/my-referrals', {
+    preHandler: [authenticate]
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      console.log('📍 GET /my-referrals called')
+      console.log('👤 Current user:', request.currentUser?.id, request.currentUser?.email)
+
+      const userId = request.currentUser!.id
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { referralCode: true }
+      })
+
+      if (!user) {
+        return reply.code(404).send({
+          success: false,
+          error: 'User not found'
+        })
+      }
+
+      // Получаем всех рефералов первого уровня
+      const level1Referrals = await prisma.user.findMany({
+        where: { referredBy: userId },
+        select: {
+          id: true,
+          email: true,
+          createdAt: true,
+          investments: {
+            where: {
+              status: { in: ['ACTIVE', 'COMPLETED'] }
+            },
+            select: {
+              id: true,
+              amount: true,
+              createdAt: true
+            },
+            orderBy: { createdAt: 'desc' }
+          }
+        }
+      })
+
+      // Считаем уникальное количество рефералов первого уровня
+      const level1Count = level1Referrals.length
+      
+      // Вычисляем tiered-процент для первого уровня
+      const tierPercent = calculateTierPercent(level1Count)
+
+      console.log(`📊 Level 1 referrals: ${level1Count}, Tier: ${(tierPercent * 100).toFixed(0)}%`)
+
+      const level1Ids = level1Referrals.map(ref => ref.id)
+      
+      // Получаем рефералов второго уровня
+      const level2Referrals = await prisma.user.findMany({
+        where: { referredBy: { in: level1Ids } },
+        select: {
+          id: true,
+          email: true,
+          createdAt: true,
+          investments: {
+            where: {
+              status: { in: ['ACTIVE', 'COMPLETED'] }
+            },
+            select: {
+              id: true,
+              amount: true,
+              createdAt: true
+            },
+            orderBy: { createdAt: 'desc' }
+          }
+        }
+      })
+
+      const level1Data: ReferralData[] = []
+      let totalLevel1Commission = 0
+      
+      // Обрабатываем Level 1 с tiered-комиссией
+      for (const ref of level1Referrals) {
+        for (const investment of ref.investments) {
+          const commission = Number(investment.amount) * tierPercent
+
+          const earning = await prisma.referralEarning.findFirst({
+            where: {
+              referrerId: userId,
+              userId: ref.id,
+              investmentId: investment.id
+            }
+          })
+
+          level1Data.push({
+            fullUserId: ref.id,
+            userIdShort: ref.id.slice(0, 8),
+            email: ref.email,
+            joinedAt: ref.createdAt,
+            investmentId: investment.id,
+            investmentAmount: Number(investment.amount),
+            investmentDate: investment.createdAt,
+            commission: parseFloat(commission.toFixed(2)),
+            bonusWithdrawn: earning?.withdrawn || false,
+            withdrawnAt: earning?.withdrawnAt || null
+          })
+
+          totalLevel1Commission += commission
+        }
+      }
+
+      const level2Data: ReferralData[] = []
+      let totalLevel2Commission = 0
+      
+      // Обрабатываем Level 2 с фиксированным 3%
+      for (const ref of level2Referrals) {
+        for (const investment of ref.investments) {
+          const commission = Number(investment.amount) * 0.03
+
+          const earning = await prisma.referralEarning.findFirst({
+            where: {
+              referrerId: userId,
+              userId: ref.id,
+              investmentId: investment.id
+            }
+          })
+
+          level2Data.push({
+            fullUserId: ref.id,
+            userIdShort: ref.id.slice(0, 8),
+            email: ref.email,
+            joinedAt: ref.createdAt,
+            investmentId: investment.id,
+            investmentAmount: Number(investment.amount),
+            investmentDate: investment.createdAt,
+            commission: parseFloat(commission.toFixed(2)),
+            bonusWithdrawn: earning?.withdrawn || false,
+            withdrawnAt: earning?.withdrawnAt || null
+          })
+
+          totalLevel2Commission += commission
+        }
+      }
+
+      const totalEarnings = totalLevel1Commission + totalLevel2Commission
+
+      const uniqueLevel1 = new Set(level1Referrals.map(r => r.id)).size
+      const uniqueLevel2 = new Set(level2Referrals.map(r => r.id)).size
+
+      console.log('✅ Referral data fetched successfully:', {
+        totalReferrals: uniqueLevel1 + uniqueLevel2,
+        level1Investments: level1Data.length,
+        level2Investments: level2Data.length,
+        tierPercent: `${(tierPercent * 100).toFixed(0)}%`,
+        totalEarnings: totalEarnings.toFixed(2)
+      })
+
+      return reply.send({
+        success: true,
+        data: {
+          referralCode: user.referralCode,
+          totalReferrals: uniqueLevel1 + uniqueLevel2,
+          totalEarnings: parseFloat(totalEarnings.toFixed(2)),
+          level1: level1Data,
+          level2: level2Data,
+          tierPercent,
+          level1Count
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error fetching referral data:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to fetch referral data'
+      })
+    }
+  })
+
+  // ✅ GET /earnings
+  fastify.get('/earnings', {
+    preHandler: [authenticate]
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = request.currentUser!.id
+
+      const earnings = await prisma.referralEarning.findMany({
+        where: { referrerId: userId },
+        include: {
+          user: { select: { email: true } },
+          investment: {
+            select: {
+              amount: true,
+              createdAt: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      })
+
+      return reply.send({
+        success: true,
+        data: earnings
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error fetching earnings:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to fetch earnings'
+      })
+    }
+  })
+
+  // 🆕 GET /available-for-actions - Доступная прибыль для вывода/реинвеста
+  fastify.get('/available-for-actions', {
+    preHandler: [authenticate]
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = request.currentUser!.id
+      const REQUIRED_DAYS = 31
+
+      // Получаем всех рефералов Level 1
+      const level1Referrals = await prisma.user.findMany({
+        where: { referredBy: userId },
+        include: {
+          investments: {
+            where: { status: { in: ['ACTIVE', 'COMPLETED'] } }
+          }
+        }
+      })
+
+      const level1Count = level1Referrals.length
+      const tierPercent = calculateTierPercent(level1Count)
+
+      // Получаем рефералов Level 2
+      const level1Ids = level1Referrals.map(r => r.id)
+      const level2Referrals = await prisma.user.findMany({
+        where: { referredBy: { in: level1Ids } },
+        include: {
+          investments: {
+            where: { status: { in: ['ACTIVE', 'COMPLETED'] } }
+          }
+        }
+      })
+
+      let availableAmount = 0
+      let lockedAmount = 0
+      const availableItems: any[] = []
+
+      // Проверяем Level 1
+      for (const ref of level1Referrals) {
+        for (const investment of ref.investments) {
+          const commission = Number(investment.amount) * tierPercent
+          const investmentDate = new Date(investment.createdAt)
+          const now = new Date()
+          const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+          // Проверяем, уже выведен ли бонус
+          const earning = await prisma.referralEarning.findFirst({
+            where: {
+              referrerId: userId,
+              userId: ref.id,
+              investmentId: investment.id
+            }
+          })
+
+          if (earning?.withdrawn) continue
+
+          if (daysPassed >= REQUIRED_DAYS) {
+            availableAmount += commission
+            availableItems.push({
+              referralUserId: ref.id,
+              investmentId: investment.id,
+              amount: commission,
+              level: 1
+            })
+          } else {
+            lockedAmount += commission
+          }
+        }
+      }
+
+      // Проверяем Level 2
+      for (const ref of level2Referrals) {
+        for (const investment of ref.investments) {
+          const commission = Number(investment.amount) * 0.03
+          const investmentDate = new Date(investment.createdAt)
+          const now = new Date()
+          const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+          const earning = await prisma.referralEarning.findFirst({
+            where: {
+              referrerId: userId,
+              userId: ref.id,
+              investmentId: investment.id
+            }
+          })
+
+          if (earning?.withdrawn) continue
+
+          if (daysPassed >= REQUIRED_DAYS) {
+            availableAmount += commission
+            availableItems.push({
+              referralUserId: ref.id,
+              investmentId: investment.id,
+              amount: commission,
+              level: 2
+            })
+          } else {
+            lockedAmount += commission
+          }
+        }
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          availableAmount: parseFloat(availableAmount.toFixed(2)),
+          lockedAmount: parseFloat(lockedAmount.toFixed(2)),
+          availableCount: availableItems.length,
+          items: availableItems
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error fetching available actions:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to fetch available actions'
+      })
+    }
+  })
+
+  // 🆕 POST /bulk-withdraw - Общий вывод всей доступной прибыли
+  fastify.post<{ Body: BulkWithdrawBody }>('/bulk-withdraw', {
+    preHandler: [authenticate]
+  }, async (request: FastifyRequest<{ Body: BulkWithdrawBody }>, reply: FastifyReply) => {
+    try {
+      const userId = request.currentUser!.id
+      const { trc20Address } = request.body
+
+      if (!trc20Address || !trc20Address.startsWith('T') || trc20Address.length !== 34) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid TRC-20 address format'
+        })
+      }
+
+      // Получаем доступные для вывода комиссии
+      const REQUIRED_DAYS = 31
+      const level1Referrals = await prisma.user.findMany({
+        where: { referredBy: userId },
+        include: {
+          investments: {
+            where: { status: { in: ['ACTIVE', 'COMPLETED'] } }
+          }
+        }
+      })
+
+      const level1Count = level1Referrals.length
+      const tierPercent = calculateTierPercent(level1Count)
+
+      const level1Ids = level1Referrals.map(r => r.id)
+      const level2Referrals = await prisma.user.findMany({
+        where: { referredBy: { in: level1Ids } },
+        include: {
+          investments: {
+            where: { status: { in: ['ACTIVE', 'COMPLETED'] } }
+          }
+        }
+      })
+
+      let totalAmount = 0
+      const withdrawalIds: string[] = []
+
+      // Обрабатываем Level 1
+      for (const ref of level1Referrals) {
+        for (const investment of ref.investments) {
+          const commission = Number(investment.amount) * tierPercent
+          const investmentDate = new Date(investment.createdAt)
+          const now = new Date()
+          const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+          let earning = await prisma.referralEarning.findFirst({
+            where: {
+              referrerId: userId,
+              userId: ref.id,
+              investmentId: investment.id
+            }
+          })
+
+          if (earning?.withdrawn || daysPassed < REQUIRED_DAYS) continue
+
+          if (!earning) {
+            earning = await prisma.referralEarning.create({
+              data: {
+                referrerId: userId,
+                userId: ref.id,
+                investmentId: investment.id,
+                amount: commission,
+                percentage: tierPercent,
+                level: 1,
+                withdrawn: false,
+                status: 'PENDING'
+              }
+            })
+          }
+
+          const withdrawal = await prisma.referralWithdrawalRequest.create({
+            data: {
+              userId: userId,
+              referralUserId: ref.id,
+              investmentId: investment.id,
+              referralEarningId: earning.id,
+              amount: commission,
+              trc20Address: trc20Address,
+              status: 'PENDING'
+            }
+          })
+
+          withdrawalIds.push(withdrawal.id)
+          totalAmount += commission
+        }
+      }
+
+      // Обрабатываем Level 2
+      for (const ref of level2Referrals) {
+        for (const investment of ref.investments) {
+          const commission = Number(investment.amount) * 0.03
+          const investmentDate = new Date(investment.createdAt)
+          const now = new Date()
+          const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+          let earning = await prisma.referralEarning.findFirst({
+            where: {
+              referrerId: userId,
+              userId: ref.id,
+              investmentId: investment.id
+            }
+          })
+
+          if (earning?.withdrawn || daysPassed < REQUIRED_DAYS) continue
+
+          if (!earning) {
+            earning = await prisma.referralEarning.create({
+              data: {
+                referrerId: userId,
+                userId: ref.id,
+                investmentId: investment.id,
+                amount: commission,
+                percentage: 0.03,
+                level: 2,
+                withdrawn: false,
+                status: 'PENDING'
+              }
+            })
+          }
+
+          const withdrawal = await prisma.referralWithdrawalRequest.create({
+            data: {
+              userId: userId,
+              referralUserId: ref.id,
+              investmentId: investment.id,
+              referralEarningId: earning.id,
+              amount: commission,
+              trc20Address: trc20Address,
+              status: 'PENDING'
+            }
+          })
+
+          withdrawalIds.push(withdrawal.id)
+          totalAmount += commission
+        }
+      }
+
+      if (withdrawalIds.length === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'No available referral earnings to withdraw'
+        })
+      }
+
+      // Telegram notification (optional)
+      try {
+        const { notifyBulkReferralWithdrawal } = await import('../bot/telegram-bot')
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true }
+        })
+
+        await notifyBulkReferralWithdrawal(
+          userId,
+          user?.email || 'Unknown',
+          totalAmount,
+          trc20Address,
+          withdrawalIds.length
+        )
+      } catch (telegramError: any) {
+        console.error('❌ Failed to send Telegram notification:', telegramError)
+      }
+
+      return reply.send({
+        success: true,
+        message: `Bulk withdrawal request submitted for ${withdrawalIds.length} referral earnings`,
+        data: {
+          totalAmount: parseFloat(totalAmount.toFixed(2)),
+          count: withdrawalIds.length,
+          withdrawalIds
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error processing bulk withdrawal:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to process bulk withdrawal'
+      })
+    }
+  })
+
+  // 🆕 POST /reinvest-to-investment - Реинвест прибыли в инвестиции
+  fastify.post<{ Body: ReinvestBody }>('/reinvest-to-investment', {
+    preHandler: [authenticate]
+  }, async (request: FastifyRequest<{ Body: ReinvestBody }>, reply: FastifyReply) => {
+    try {
+      const userId = request.currentUser!.id
+      const { investmentId } = request.body
+
+      if (!investmentId) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Investment ID is required'
+        })
+      }
+
+      // Получаем инвестицию
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id: investmentId,
+          userId: userId,
+          status: 'ACTIVE'
+        },
+        include: {
+          plan: true
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found or not active'
+        })
+      }
+
+      // Получаем доступную прибыль
+      const REQUIRED_DAYS = 31
+      const level1Referrals = await prisma.user.findMany({
+        where: { referredBy: userId },
+        include: {
+          investments: {
+            where: { status: { in: ['ACTIVE', 'COMPLETED'] } }
+          }
+        }
+      })
+
+      const level1Count = level1Referrals.length
+      const tierPercent = calculateTierPercent(level1Count)
+
+      const level1Ids = level1Referrals.map(r => r.id)
+      const level2Referrals = await prisma.user.findMany({
+        where: { referredBy: { in: level1Ids } },
+        include: {
+          investments: {
+            where: { status: { in: ['ACTIVE', 'COMPLETED'] } }
+          }
+        }
+      })
+
+      let availableAmount = 0
+
+      // Собираем доступную прибыль и помечаем earnings
+      const now = new Date()
+
+      // Level 1
+      for (const ref of level1Referrals) {
+        for (const inv of ref.investments) {
+          const commission = Number(inv.amount) * tierPercent
+          const investmentDate = new Date(inv.createdAt)
+          const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+          let earning = await prisma.referralEarning.findFirst({
+            where: {
+              referrerId: userId,
+              userId: ref.id,
+              investmentId: inv.id
+            }
+          })
+
+          if (earning?.withdrawn || daysPassed < REQUIRED_DAYS) continue
+
+          if (!earning) {
+            earning = await prisma.referralEarning.create({
+              data: {
+                referrerId: userId,
+                userId: ref.id,
+                investmentId: inv.id,
+                amount: commission,
+                percentage: tierPercent,
+                level: 1,
+                withdrawn: false,
+                status: 'PENDING'
+              }
+            })
+          }
+
+          await prisma.referralEarning.update({
+            where: { id: earning.id },
+            data: {
+              withdrawn: true,
+              withdrawnAt: now,
+              status: 'COMPLETED'
+            }
+          })
+
+          availableAmount += commission
+        }
+      }
+
+      // Level 2
+      for (const ref of level2Referrals) {
+        for (const inv of ref.investments) {
+          const commission = Number(inv.amount) * 0.03
+          const investmentDate = new Date(inv.createdAt)
+          const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+          let earning = await prisma.referralEarning.findFirst({
+            where: {
+              referrerId: userId,
+              userId: ref.id,
+              investmentId: inv.id
+            }
+          })
+
+          if (earning?.withdrawn || daysPassed < REQUIRED_DAYS) continue
+
+          if (!earning) {
+            earning = await prisma.referralEarning.create({
+              data: {
+                referrerId: userId,
+                userId: ref.id,
+                investmentId: inv.id,
+                amount: commission,
+                percentage: 0.03,
+                level: 2,
+                withdrawn: false,
+                status: 'PENDING'
+              }
+            })
+          }
+
+          await prisma.referralEarning.update({
+            where: { id: earning.id },
+            data: {
+              withdrawn: true,
+              withdrawnAt: now,
+              status: 'COMPLETED'
+            }
+          })
+
+          availableAmount += commission
+        }
+      }
+
+      if (availableAmount === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'No available referral earnings to reinvest'
+        })
+      }
+
+      // Определяем новый пакет
+      const currentAmount = Number(investment.amount)
+      const newTotalAmount = currentAmount + availableAmount
+
+      const PACKAGES = {
+        starter: { name: 'Starter', min: 100, max: 999, monthlyRate: 14 },
+        advanced: { name: 'Advanced', min: 1000, max: 2999, monthlyRate: 17 },
+        pro: { name: 'Pro', min: 3000, max: 4999, monthlyRate: 20 },
+        elite: { name: 'Elite', min: 6000, max: 100000, monthlyRate: 22 }
+      }
+
+      let newPackage = investment.plan.name
+      let newROI = Number(investment.roi)
+
+      if (newTotalAmount >= 6000) {
+        newPackage = PACKAGES.elite.name
+        newROI = PACKAGES.elite.monthlyRate
+      } else if (newTotalAmount >= 3000) {
+        newPackage = PACKAGES.pro.name
+        newROI = PACKAGES.pro.monthlyRate
+      } else if (newTotalAmount >= 1000) {
+        newPackage = PACKAGES.advanced.name
+        newROI = PACKAGES.advanced.monthlyRate
+      } else {
+        newPackage = PACKAGES.starter.name
+        newROI = PACKAGES.starter.monthlyRate
+      }
+
+      const upgraded = newPackage !== investment.plan.name
+
+      // Обновляем инвестицию
+      const { CalculationsService } = await import('../services/investments/calculations.service')
+      const activationDate = upgraded ? CalculationsService.getNextActivationDate(now) : null
+
+      await prisma.investment.update({
+        where: { id: investmentId },
+        data: {
+          amount: newTotalAmount,
+          ...(upgraded ? {
+            pendingUpgradeROI: newROI,
+            pendingUpgradePlan: newPackage,
+            upgradeActivationDate: activationDate,
+            upgradeRequestDate: now
+          } : {
+            roi: newROI,
+            effectiveROI: newROI
+          })
+        }
+      })
+
+      // Создаём запись реинвеста
+      await prisma.investmentReinvest.create({
+        data: {
+          investmentId: investmentId,
+          userId: userId,
+          reinvestedAmount: availableAmount,
+          fromProfit: availableAmount,
+          oldPackage: investment.plan.name,
+          newPackage: newPackage,
+          oldROI: Number(investment.roi),
+          newROI: newROI,
+          oldAmount: currentAmount,
+          newAmount: newTotalAmount,
+          upgraded: upgraded,
+          status: 'COMPLETED',
+          requestDate: now,
+          processedDate: now
+        }
+      })
+
+      return reply.send({
+        success: true,
+        message: upgraded 
+          ? `Referral profit reinvested! New ${newROI}% ROI will activate on ${activationDate?.toLocaleDateString('ru-RU')}`
+          : 'Referral profit reinvested successfully',
+        data: {
+          oldAmount: currentAmount,
+          reinvestedAmount: availableAmount,
+          newAmount: newTotalAmount,
+          oldPackage: investment.plan.name,
+          newPackage: newPackage,
+          oldROI: Number(investment.roi),
+          newROI: newROI,
+          upgraded,
+          activationDate: upgraded ? activationDate?.toISOString() : null
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error reinvesting referral profit:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to reinvest referral profit'
+      })
+    }
+  })
+
+  // ✅ POST /withdraw-bonus - С TELEGRAM УВЕДОМЛЕНИЕМ
+  fastify.post<{ Body: WithdrawBonusBody }>('/withdraw-bonus', {
+    preHandler: [authenticate]
+  }, async (request: FastifyRequest<{ Body: WithdrawBonusBody }>, reply: FastifyReply) => {
+    try {
+      console.log('🎯 POST /withdraw-bonus called')
+      console.log('📦 Request body:', request.body)
+      console.log('👤 Current user:', request.currentUser?.id)
+
+      const userId = request.currentUser!.id
+      const { referralUserId, investmentId, trc20Address } = request.body
+
+      if (!referralUserId || !investmentId || !trc20Address) {
+        console.log('❌ Missing required fields')
+        return reply.code(400).send({
+          success: false,
+          error: 'Referral user ID, investment ID and TRC-20 address are required'
+        })
+      }
+
+      if (!trc20Address.startsWith('T') || trc20Address.length !== 34) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid TRC-20 address format'
+        })
+      }
+
+      // Проверяем, является ли это Level 1 или Level 2
+      const referral = await prisma.user.findFirst({
+        where: {
+          id: referralUserId,
+          referredBy: userId
+        },
+        select: {
+          id: true,
+          email: true
+        }
+      })
+
+      let isLevel1 = !!referral
+      let referralUser = referral
+
+      // Если не Level 1, проверяем Level 2
+      if (!isLevel1) {
+        const level1Parent = await prisma.user.findFirst({
+          where: {
+            id: referralUserId
+          },
+          select: {
+            id: true,
+            email: true,
+            referredBy: true
+          }
+        })
+
+        if (level1Parent?.referredBy) {
+          const grandparent = await prisma.user.findFirst({
+            where: {
+              id: level1Parent.referredBy
+            }
+          })
+
+          if (grandparent?.id === userId) {
+            referralUser = level1Parent
+          }
+        }
+      }
+
+      if (!referralUser) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Referral not found in your referral tree'
+        })
+      }
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id: investmentId,
+          userId: referralUserId,
+          status: { in: ['ACTIVE', 'COMPLETED'] }
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found'
+        })
+      }
+
+      const investmentDate = new Date(investment.createdAt)
+      const currentDate = new Date()
+      const daysPassed = Math.floor((currentDate.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+      const REQUIRED_DAYS = 31
+
+      if (daysPassed < REQUIRED_DAYS) {
+        return reply.code(400).send({
+          success: false,
+          error: `Bonus withdrawal available in ${REQUIRED_DAYS - daysPassed} days`,
+          daysRemaining: REQUIRED_DAYS - daysPassed
+        })
+      }
+
+      // Вычисляем комиссию с учётом tiered-системы
+      let commissionPercent: number
+      let level: number
+
+      if (isLevel1) {
+        // Level 1 - tiered-комиссия
+        const allLevel1Referrals = await prisma.user.findMany({
+          where: { referredBy: userId }
+        })
+        const level1Count = allLevel1Referrals.length
+        commissionPercent = calculateTierPercent(level1Count)
+        level = 1
+        console.log(`💰 Level 1 withdrawal: ${level1Count} referrals → ${(commissionPercent * 100).toFixed(0)}% commission`)
+      } else {
+        // Level 2 - фиксированная 3%
+        commissionPercent = 0.03
+        level = 2
+        console.log(`💰 Level 2 withdrawal: 3% commission`)
+      }
+
+      const commissionAmount = Number(investment.amount) * commissionPercent
+
+      // Проверяем, есть ли уже запись ReferralEarning
+      let referralEarning = await prisma.referralEarning.findFirst({
+        where: {
+          referrerId: userId,
+          userId: referralUserId,
+          investmentId: investmentId
+        }
+      })
+
+      if (!referralEarning) {
+        referralEarning = await prisma.referralEarning.create({
+          data: {
+            referrerId: userId,
+            userId: referralUserId,
+            investmentId: investmentId,
+            amount: commissionAmount,
+            percentage: commissionPercent,
+            level: level,
+            withdrawn: false,
+            status: 'PENDING'
+          }
+        })
+      }
+
+      if (referralEarning.withdrawn) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Bonus already withdrawn',
+          withdrawnAt: referralEarning.withdrawnAt
+        })
+      }
+
+      const existingRequest = await prisma.referralWithdrawalRequest.findFirst({
+        where: {
+          userId: userId,
+          referralUserId: referralUserId,
+          investmentId: investmentId,
+          status: 'PENDING'
+        }
+      })
+
+      if (existingRequest) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Withdrawal request already pending',
+          data: {
+            withdrawalId: existingRequest.id
+          }
+        })
+      }
+
+      const withdrawalRequest = await prisma.referralWithdrawalRequest.create({
+        data: {
+          userId: userId,
+          referralUserId: referralUserId,
+          investmentId: investmentId,
+          referralEarningId: referralEarning.id,
+          amount: commissionAmount,
+          trc20Address: trc20Address,
+          status: 'PENDING'
+        }
+      })
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true }
+      })
+
+      const commissionRate = Math.round(commissionPercent * 100)
+
+      // 🔔 ОТПРАВКА TELEGRAM УВЕДОМЛЕНИЯ
+      try {
+        const { notifyReferralBonusWithdrawal } = await import('../bot/telegram-bot')
+        
+        await notifyReferralBonusWithdrawal(
+          withdrawalRequest.id,
+          userId,
+          user?.email || 'Unknown',
+          commissionAmount,
+          trc20Address,
+          level
+        )
+
+        console.log('✅ Telegram notification sent for withdrawal:', withdrawalRequest.id)
+      } catch (telegramError: any) {
+        console.error('❌ Failed to send Telegram notification:', telegramError)
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'REFERRAL_BONUS_WITHDRAWAL_REQUESTED',
+          resource: 'REFERRAL',
+          details: JSON.stringify({
+            withdrawalRequestId: withdrawalRequest.id,
+            referralUserId,
+            investmentId,
+            amount: commissionAmount.toString(),
+            commissionRate: `${commissionRate}%`,
+            level,
+            trc20Address
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      console.log('✅ Withdrawal request created successfully:', withdrawalRequest.id)
+
+      return reply.send({
+        success: true,
+        message: 'Referral bonus withdrawal request submitted successfully',
+        data: {
+          withdrawalId: withdrawalRequest.id,
+          amount: parseFloat(commissionAmount.toFixed(2)),
+          commissionRate: `${commissionRate}%`,
+          level,
+          status: 'PENDING'
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error withdrawing referral bonus:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to withdraw referral bonus'
+      })
+    }
+  })
+
+  // ✅ GET /withdrawal-status/:withdrawalId
+  fastify.get<{ Params: WithdrawalStatusParams }>('/withdrawal-status/:withdrawalId', {
+    preHandler: [authenticate]
+  }, async (request: FastifyRequest<{ Params: WithdrawalStatusParams }>, reply: FastifyReply) => {
+    try {
+      const userId = request.currentUser!.id
+      const { withdrawalId } = request.params
+
+      const withdrawal = await prisma.referralWithdrawalRequest.findUnique({
+        where: { id: withdrawalId },
+        select: {
+          id: true,
+          status: true,
+          amount: true,
+          trc20Address: true,
+          createdAt: true,
+          userId: true
+        }
+      })
+
+      if (!withdrawal) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Withdrawal request not found'
+        })
+      }
+
+      if (withdrawal.userId !== userId) {
+        return reply.code(403).send({
+          success: false,
+          error: 'Access denied'
+        })
+      }
+
+      return reply.send({
+        success: true,
+        data: withdrawal
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error checking withdrawal status:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to check withdrawal status'
+      })
+    }
+  })
+
+  // ✅ POST /withdraw-bonus/:withdrawalId/approve
+  fastify.post<{ Params: WithdrawalStatusParams; Body: ApproveRejectBody }>('/withdraw-bonus/:withdrawalId/approve', async (request: FastifyRequest<{ Params: WithdrawalStatusParams; Body: ApproveRejectBody }>, reply: FastifyReply) => {
+    try {
+      const { withdrawalId } = request.params
+      const { supportUserId } = request.body
+
+      const withdrawal = await prisma.referralWithdrawalRequest.findUnique({
+        where: { id: withdrawalId }
+      })
+
+      if (!withdrawal) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Withdrawal request not found'
+        })
+      }
+
+      if (withdrawal.status !== 'PENDING') {
+        return reply.code(400).send({
+          success: false,
+          error: `Withdrawal request already ${withdrawal.status.toLowerCase()}`
+        })
+      }
+
+      await prisma.referralWithdrawalRequest.update({
+        where: { id: withdrawalId },
+        data: {
+          status: 'APPROVED',
+          processedAt: new Date()
+        }
+      })
+
+      if (withdrawal.referralEarningId) {
+        await prisma.referralEarning.update({
+          where: { id: withdrawal.referralEarningId },
+          data: {
+            withdrawn: true,
+            withdrawnAt: new Date(),
+            status: 'COMPLETED'
+          }
+        })
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          userId: withdrawal.userId,
+          action: 'REFERRAL_BONUS_WITHDRAWAL_APPROVED',
+          resource: 'REFERRAL',
+          details: JSON.stringify({
+            withdrawalId: withdrawalId,
+            amount: withdrawal.amount.toString(),
+            approvedBy: supportUserId || 'TELEGRAM_ADMIN'
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      console.log('✅ Withdrawal approved:', withdrawalId)
+
+      return reply.send({
+        success: true,
+        message: 'Withdrawal approved successfully',
+        data: {
+          withdrawalId: withdrawalId,
+          status: 'APPROVED'
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error approving withdrawal:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to approve withdrawal'
+      })
+    }
+  })
+
+  // ✅ POST /withdraw-bonus/:withdrawalId/reject
+  fastify.post<{ Params: WithdrawalStatusParams; Body: ApproveRejectBody }>('/withdraw-bonus/:withdrawalId/reject', async (request: FastifyRequest<{ Params: WithdrawalStatusParams; Body: ApproveRejectBody }>, reply: FastifyReply) => {
+    try {
+      const { withdrawalId } = request.params
+      const { supportUserId, reason } = request.body
+
+      const withdrawal = await prisma.referralWithdrawalRequest.findUnique({
+        where: { id: withdrawalId }
+      })
+
+      if (!withdrawal) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Withdrawal request not found'
+        })
+      }
+
+      if (withdrawal.status !== 'PENDING') {
+        return reply.code(400).send({
+          success: false,
+          error: `Withdrawal request already ${withdrawal.status.toLowerCase()}`
+        })
+      }
+
+      await prisma.referralWithdrawalRequest.update({
+        where: { id: withdrawalId },
+        data: {
+          status: 'REJECTED',
+          processedAt: new Date(),
+          rejectionReason: reason || 'Rejected by admin'
+        }
+      })
+
+      await prisma.auditLog.create({
+        data: {
+          userId: withdrawal.userId,
+          action: 'REFERRAL_BONUS_WITHDRAWAL_REJECTED',
+          resource: 'REFERRAL',
+          details: JSON.stringify({
+            withdrawalId: withdrawalId,
+            amount: withdrawal.amount.toString(),
+            rejectedBy: supportUserId || 'TELEGRAM_ADMIN',
+            reason: reason || 'Rejected by admin'
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      console.log('❌ Withdrawal rejected:', withdrawalId)
+
+      return reply.send({
+        success: true,
+        message: 'Withdrawal rejected',
+        data: {
+          withdrawalId: withdrawalId,
+          status: 'REJECTED'
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error rejecting withdrawal:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to reject withdrawal'
+      })
+    }
+  })
+
+  // ✅ GET /stats - С TIERED-КОМИССИЕЙ
+  fastify.get('/stats', {
+    preHandler: [authenticate]
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = request.currentUser!.id
+
+      // Получаем всех рефералов Level 1
+      const level1Referrals = await prisma.user.findMany({
+        where: { referredBy: userId },
+        include: {
+          investments: {
+            where: { status: { in: ['ACTIVE', 'COMPLETED'] } }
+          }
+        }
+      })
+
+      const level1Count = level1Referrals.length
+      const tierPercent = calculateTierPercent(level1Count)
+
+      // Считаем доход Level 1
+      let totalLevel1Earned = 0
+      for (const ref of level1Referrals) {
+        const totalInvested = ref.investments.reduce((sum, inv) => sum + Number(inv.amount), 0)
+        totalLevel1Earned += totalInvested * tierPercent
+      }
+
+      // Получаем рефералов Level 2
+      const level1Ids = level1Referrals.map(r => r.id)
+      const level2Referrals = await prisma.user.findMany({
+        where: { referredBy: { in: level1Ids } },
+        include: {
+          investments: {
+            where: { status: { in: ['ACTIVE', 'COMPLETED'] } }
+          }
+        }
+      })
+
+      const level2Count = level2Referrals.length
+
+      // Считаем доход Level 2 (фиксированный 3%)
+      let totalLevel2Earned = 0
+      for (const ref of level2Referrals) {
+        const totalInvested = ref.investments.reduce((sum, inv) => sum + Number(inv.amount), 0)
+        totalLevel2Earned += totalInvested * 0.03
+      }
+
+      const totalEarned = totalLevel1Earned + totalLevel2Earned
+
+      // Получаем фактические earnings для подсчёта выведенного
+      const earnings = await prisma.referralEarning.findMany({
+        where: { referrerId: userId }
+      })
+
+      const totalWithdrawn = earnings
+        .filter(e => e.withdrawn)
+        .reduce((sum, earning) => sum + Number(earning.amount), 0)
+
+      const availableToWithdraw = totalEarned - totalWithdrawn
+
+      return reply.send({
+        success: true,
+        data: {
+          totalEarned: parseFloat(totalEarned.toFixed(2)),
+          totalWithdrawn: parseFloat(totalWithdrawn.toFixed(2)),
+          availableToWithdraw: parseFloat(availableToWithdraw.toFixed(2)),
+          totalReferrals: level1Count + level2Count,
+          level1Referrals: level1Count,
+          level2Referrals: level2Count,
+          tierPercent,
+          currentTier: `${(tierPercent * 100).toFixed(0)}%`,
+          totalEarnings: earnings.length,
+          withdrawnEarnings: earnings.filter(e => e.withdrawn).length
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error fetching referral stats:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to fetch referral stats'
+      })
+    }
+  })
+}
+
+export default referralRoutes

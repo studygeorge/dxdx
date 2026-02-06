@@ -1,0 +1,1679 @@
+import { FastifyRequest, FastifyReply } from 'fastify'
+import { PrismaClient } from '@prisma/client'
+import { ethers } from 'ethers'
+import { notifyPartialWithdrawal } from '../bot/telegram-bot'  // ✅ ДОБАВЛЕНО
+
+const prisma = new PrismaClient()
+
+interface CreateInvestmentBody {
+  planId: string
+  amount: number
+  duration: number
+  walletAddress: string
+  paymentMethod?: string
+  language?: string
+}
+
+interface ConfirmPaymentBody {
+  txHash: string
+}
+
+interface UpgradeInvestmentBody {
+  additionalAmount: number
+  newPackage: string
+  paymentMethod?: string
+  senderWalletAddress?: string
+  accumulatedInterest?: number
+}
+
+interface PartialWithdrawDto {
+  amount: number
+  trc20Address: string
+}
+
+
+interface SimulateDateDto {
+  investmentId: string
+  simulatedDate: string
+}
+
+const PACKAGES: Record<string, { name: string; monthlyRate: number; min: number; max: number }> = {
+  starter: { name: 'Starter', monthlyRate: 14, min: 100, max: 999 },
+  advanced: { name: 'Advanced', monthlyRate: 17, min: 1000, max: 2999 },
+  pro: { name: 'Pro', monthlyRate: 20, min: 3000, max: 5999 },
+  elite: { name: 'Elite', monthlyRate: 22, min: 6000, max: 100000 }
+}
+
+const DURATION_BONUSES: Record<number, { 
+  months: number; 
+  rateBonus: number; 
+  cashBonus500: number;
+  cashBonus1000: number;
+  label: string 
+}> = {
+  3: {
+    months: 3,
+    rateBonus: 0,
+    cashBonus500: 0,
+    cashBonus1000: 0,
+    label: '3 месяца'
+  },
+  6: {
+    months: 6,
+    rateBonus: 1.5,
+    cashBonus500: 200,
+    cashBonus1000: 500,
+    label: '6 месяцев: +1.5% к месячной ставке + бонус $200/$500'
+  },
+  12: {
+    months: 12,
+    rateBonus: 3,
+    cashBonus500: 200,
+    cashBonus1000: 500,
+    label: '12 месяцев: +3% к месячной ставке + бонус $200/$500'
+  }
+}
+
+const calculateDaysPassedServer = (startDate: Date, lastUpgradeDate: Date | null, currentDate: Date): number => {
+  const baseDate = lastUpgradeDate || startDate
+  const diffTime = currentDate.getTime() - baseDate.getTime()
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+  return diffDays >= 0 ? diffDays : 0
+}
+
+const calculateCurrentReturnServer = (
+  amount: number,
+  effectiveROI: number,
+  daysPassed: number,
+  accumulatedInterest: number
+): number => {
+  const dailyRate = effectiveROI / 30
+  const newPeriodProfit = (amount * dailyRate * daysPassed) / 100
+  const totalProfit = accumulatedInterest + newPeriodProfit
+  
+  console.log('💰 calculateCurrentReturnServer:', {
+    amount,
+    effectiveROI,
+    daysPassed,
+    dailyRate: dailyRate.toFixed(4),
+    newPeriodProfit: newPeriodProfit.toFixed(2),
+    accumulatedFromOldPlan: accumulatedInterest.toFixed(2),
+    totalProfit: totalProfit.toFixed(2)
+  })
+  
+  return Math.max(0, totalProfit)
+}
+
+const calculateDaysRemainingServer = (endDate: Date, currentDate: Date): number => {
+  const diffTime = endDate.getTime() - currentDate.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  return diffDays > 0 ? diffDays : 0
+}
+
+const calculateCurrentReturn = (amount: number, monthlyRate: number, durationDays: number, daysPassed: number): number => {
+  const dailyRate = monthlyRate / 30
+  return (amount * dailyRate * daysPassed) / 100
+}
+
+const calculateEarlyWithdraw = (
+  amount: number, 
+  monthlyRate: number, 
+  daysPassed: number, 
+  accumulatedInterest: number,
+  withdrawnProfits: number
+) => {
+  const interest = (monthlyRate / 30) * daysPassed
+  const earnedAmount = (amount * interest) / 100
+  const totalEarned = earnedAmount + accumulatedInterest
+  const totalAmount = amount - withdrawnProfits
+  
+  return {
+    earnedInterest: totalEarned,
+    withdrawnProfits: withdrawnProfits,
+    totalAmount: totalAmount
+  }
+}
+
+const calculateExpectedReturn = (amount: number, monthlyRate: number, durationMonths: number): number => {
+  return (amount * monthlyRate * durationMonths) / 100
+}
+
+export class InvestmentsController {
+  static async createInvestment(request: FastifyRequest, reply: FastifyReply) {
+    console.log('createInvestment controller called')
+    console.log('Request body:', request.body)
+    console.log('Current user:', request.currentUser?.email)
+    
+    try {
+      const userId = request.currentUser!.id
+      const { planId, amount, duration, walletAddress, paymentMethod, language } = request.body as CreateInvestmentBody
+      
+      const userLanguage = language || 'en'
+      
+      console.log('Extracted data:', { userId, planId, amount, duration, walletAddress, paymentMethod, language: userLanguage })
+
+      if (!planId || !amount || !duration || !walletAddress) {
+        console.log('Missing required fields')
+        return reply.code(400).send({
+          success: false,
+          error: 'Missing required fields: planId, amount, duration, walletAddress'
+        })
+      }
+
+      if (![3, 6, 12].includes(duration)) {
+        console.log('Invalid duration:', duration)
+        return reply.code(400).send({
+          success: false,
+          error: 'Duration must be 3, 6, or 12 months'
+        })
+      }
+
+      let isTronWallet = false
+      let isEthereumWallet = false
+
+      if (paymentMethod === 'telegram') {
+        console.log('Telegram payment method detected')
+        isTronWallet = true
+      } else {
+        isTronWallet = walletAddress.startsWith('T') && walletAddress.length === 34
+        isEthereumWallet = walletAddress.startsWith('0x') && walletAddress.length === 42
+
+        if (!isTronWallet && !isEthereumWallet) {
+          console.log('Invalid wallet address format')
+          return reply.code(400).send({
+            success: false,
+            error: 'Invalid wallet address. Must be Ethereum (0x...) or TRON (T...) address'
+          })
+        }
+
+        if (isEthereumWallet && !ethers.isAddress(walletAddress)) {
+          console.log('Invalid Ethereum wallet address:', walletAddress)
+          return reply.code(400).send({
+            success: false,
+            error: 'Invalid Ethereum wallet address'
+          })
+        }
+      }
+
+      console.log('Looking for plan:', planId)
+      
+      const plan = await prisma.stakingPlan.findUnique({
+        where: { id: planId }
+      })
+
+      console.log('Plan found:', plan ? plan.name : 'NOT FOUND')
+
+      if (!plan) {
+        console.log('Plan not found')
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment plan not found'
+        })
+      }
+
+      if (!plan.isActive) {
+        console.log('Plan is not active')
+        return reply.code(400).send({
+          success: false,
+          error: 'This investment plan is not active'
+        })
+      }
+
+      const amountDecimal = Number(amount)
+      console.log('Amount validation:', { 
+        amount: amountDecimal, 
+        min: Number(plan.minAmount), 
+        max: Number(plan.maxAmount) 
+      })
+      
+      if (amountDecimal < Number(plan.minAmount)) {
+        console.log('Amount too low')
+        return reply.code(400).send({
+          success: false,
+          error: `Amount must be at least ${plan.minAmount} ${plan.currency}`
+        })
+      }
+
+      if (plan.maxAmount && amountDecimal > Number(plan.maxAmount)) {
+        console.log('Amount too high')
+        return reply.code(400).send({
+          success: false,
+          error: `Amount must not exceed ${plan.maxAmount} ${plan.currency}`
+        })
+      }
+
+      let selectedPackage: any
+      let packageKey: string
+
+      if (amountDecimal >= 100 && amountDecimal <= 999) {
+        selectedPackage = PACKAGES.starter
+        packageKey = 'starter'
+      } else if (amountDecimal >= 1000 && amountDecimal <= 2999) {
+        selectedPackage = PACKAGES.advanced
+        packageKey = 'advanced'
+      } else if (amountDecimal >= 3000 && amountDecimal <= 5999) {
+        selectedPackage = PACKAGES.pro
+        packageKey = 'pro'
+      } else if (amountDecimal >= 6000) {
+        selectedPackage = PACKAGES.elite
+        packageKey = 'elite'
+      } else {
+        return reply.code(400).send({
+          success: false,
+          error: 'Amount must be at least $100'
+        })
+      }
+
+      console.log('Selected package:', packageKey, selectedPackage)
+
+      const durationBonus = DURATION_BONUSES[duration]
+      const baseMonthlyRate = selectedPackage.monthlyRate
+      
+      let effectiveMonthlyRate = baseMonthlyRate + durationBonus.rateBonus
+      let cashBonus = 0
+      let bonusUnlockedAt: Date | null = null
+
+      if (amountDecimal >= 500 && duration !== 3) {
+        if (amountDecimal >= 1000) {
+          cashBonus = durationBonus.cashBonus1000
+        } else {
+          cashBonus = durationBonus.cashBonus500
+        }
+
+        const startDate = new Date()
+        const halfDuration = duration / 2
+        bonusUnlockedAt = new Date(startDate)
+        bonusUnlockedAt.setMonth(bonusUnlockedAt.getMonth() + halfDuration)
+
+        console.log('💰 Bonus calculation (amount >= $500):', {
+          amount: amountDecimal,
+          duration,
+          baseMonthlyRate,
+          durationRateBonus: durationBonus.rateBonus,
+          effectiveMonthlyRate,
+          cashBonus,
+          bonusUnlockedAt: bonusUnlockedAt?.toISOString(),
+          note: amountDecimal >= 1000 
+            ? `Rate bonus: +${durationBonus.rateBonus}% (always). Cash bonus: $500 (from $1000, available after ${duration / 2} months)`
+            : `Rate bonus: +${durationBonus.rateBonus}% (always). Cash bonus: $200 (from $500, available after ${duration / 2} months)`
+        })
+      } else {
+        console.log('⚠️ No cash bonus:', {
+          amount: amountDecimal,
+          duration,
+          baseMonthlyRate,
+          durationRateBonus: durationBonus.rateBonus,
+          effectiveMonthlyRate,
+          cashBonus: 0,
+          reason: duration === 3 ? 'Duration is 3 months' : 'Amount < $500',
+          note: `Rate bonus: +${durationBonus.rateBonus}% (always applied). No cash bonus.`
+        })
+      }
+
+      const expectedReturn = calculateExpectedReturn(amountDecimal, effectiveMonthlyRate, duration)
+      const totalReturn = amountDecimal + expectedReturn + cashBonus
+
+      console.log('Financial calculation:', {
+        amount: amountDecimal,
+        baseRate: baseMonthlyRate,
+        durationBonus: durationBonus.rateBonus,
+        effectiveRate: effectiveMonthlyRate,
+        duration,
+        expectedReturn,
+        cashBonus,
+        totalReturn,
+        bonusNote: duration === 3 
+          ? `Rate bonus: +${durationBonus.rateBonus}% (always). No cash bonus for 3 months.`
+          : amountDecimal >= 1000
+            ? `Rate bonus: +${durationBonus.rateBonus}% (always). Cash bonus: $500 (granted)`
+            : amountDecimal >= 500
+              ? `Rate bonus: +${durationBonus.rateBonus}% (always). Cash bonus: $200 (granted)`
+              : `Rate bonus: +${durationBonus.rateBonus}% (always). No cash bonus (amount < $500)`
+      })
+
+      const startDate = new Date()
+      const endDate = new Date(startDate)
+      endDate.setMonth(endDate.getMonth() + duration)
+
+      console.log('Dates:', { startDate, endDate })
+
+      let walletKey: string
+      let network: string
+      let chainId: string | number
+      let decimals: number
+      let usdtContract: string
+
+      if (paymentMethod === 'telegram' || isTronWallet) {
+        walletKey = 'STAKING_WALLET_USDT_TRC20'
+        network = 'TRON'
+        chainId = 'tron'
+        decimals = 6
+        usdtContract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+        console.log('TRON network (TRC-20) selected')
+      } else {
+        walletKey = 'STAKING_WALLET_USDT_ERC20'
+        network = 'Ethereum'
+        chainId = 1
+        decimals = 6
+        usdtContract = '0xdac17f958d2ee523a2206206994597c13d831ec7'
+        console.log('Ethereum network (ERC-20) selected')
+      }
+
+      console.log('Looking for admin wallet config:', walletKey)
+      
+      const adminWalletConfig = await prisma.systemConfig.findUnique({
+        where: { key: walletKey }
+      })
+
+      console.log('Admin wallet config:', adminWalletConfig ? 'FOUND' : 'NOT FOUND')
+
+      if (!adminWalletConfig || !adminWalletConfig.value) {
+        console.log('Admin wallet not configured')
+        return reply.code(503).send({
+          success: false,
+          error: `Admin wallet not configured for ${network}. Please contact support.`
+        })
+      }
+
+      const adminWallet = adminWalletConfig.value
+      console.log('Admin wallet:', adminWallet)
+
+      if (paymentMethod !== 'telegram') {
+        const adminIsEthereum = adminWallet.startsWith('0x')
+        const adminIsTron = adminWallet.startsWith('T')
+
+        if (isEthereumWallet && !adminIsEthereum) {
+          return reply.code(503).send({
+            success: false,
+            error: 'Admin wallet misconfigured for Ethereum network'
+          })
+        }
+
+        if (isTronWallet && !adminIsTron) {
+          return reply.code(503).send({
+            success: false,
+            error: 'Admin wallet misconfigured for TRON network'
+          })
+        }
+      }
+
+      const valueInSmallestUnit = (amountDecimal * Math.pow(10, decimals)).toString()
+
+      console.log('Payment details:', {
+        network,
+        chainId,
+        decimals,
+        amount: amountDecimal,
+        valueInSmallestUnit,
+        usdtContract,
+        paymentMethod
+      })
+
+      console.log('Creating investment in database...')
+      
+      const investment = await prisma.investment.create({
+        data: {
+          userId,
+          planId: plan.id,
+          amount: amountDecimal,
+          currency: plan.currency,
+          roi: baseMonthlyRate,
+          duration: duration,
+          durationBonus: durationBonus.rateBonus,
+          bonusAmount: cashBonus,
+          bonusUnlockedAt: bonusUnlockedAt,
+          bonusWithdrawn: false,
+          effectiveROI: effectiveMonthlyRate,
+          expectedReturn,
+          totalReturn,
+          userWalletAddress: walletAddress,
+          adminWalletAddress: adminWallet,
+          status: 'PENDING',
+          accumulatedInterest: 0,
+          withdrawnProfits: 0,
+          language: userLanguage,
+          startDate: null,
+          endDate: null
+        },
+        include: {
+          plan: true,
+          user: {
+            include: {
+              referrer: true
+            }
+          }
+        }
+      })
+
+      console.log('Investment created:', investment.id, 'Language:', userLanguage, 'Cash Bonus:', cashBonus)
+
+      await InvestmentsController.processReferralCommissions(investment)
+
+      const responseData = {
+        success: true,
+        message: 'Investment created successfully',
+        data: {
+          investmentId: investment.id,
+          adminWallet: adminWallet,
+          senderWallet: paymentMethod === 'telegram' ? walletAddress : undefined,
+          amount: investment.amount,
+          planName: plan.name,
+          packageName: selectedPackage.name,
+          baseRate: baseMonthlyRate,
+          durationBonus: durationBonus.rateBonus,
+          effectiveRate: effectiveMonthlyRate,
+          cashBonus: cashBonus,
+          bonusUnlockedAt: bonusUnlockedAt?.toISOString(),
+          bonusNote: duration === 3 
+            ? `Rate bonus: +${durationBonus.rateBonus}% (always). No cash bonus for 3 months.`
+            : amountDecimal >= 1000 
+              ? `Rate bonus: +${durationBonus.rateBonus}% (always). Cash bonus: $500 (available after ${duration / 2} months)` 
+              : amountDecimal >= 500
+                ? `Rate bonus: +${durationBonus.rateBonus}% (always). Cash bonus: $200 (available after ${duration / 2} months)`
+                : `Rate bonus: +${durationBonus.rateBonus}% (always). No cash bonus (amount < $500)`,
+          duration: duration,
+          durationLabel: durationBonus.label,
+          expectedReturn: investment.expectedReturn,
+          totalReturn: investment.totalReturn,
+          language: userLanguage,
+          payment: paymentMethod === 'telegram' ? {
+            method: 'telegram',
+            network: network,
+            adminWallet: adminWallet
+          } : {
+            to: adminWallet,
+            from: walletAddress,
+            amount: amountDecimal,
+            value: valueInSmallestUnit,
+            decimals: decimals,
+            chainId: chainId,
+            network: network,
+            token: plan.currency,
+            usdtContract: usdtContract
+          }
+        }
+      }
+
+      console.log('Sending response:', responseData)
+      
+      return reply.code(201).send(responseData)
+
+    } catch (error: any) {
+      console.error('Error in createInvestment:', error)
+      console.error('Error stack:', error.stack)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to create investment',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      })
+    }
+  }
+
+  private static async processReferralCommissions(investment: any) {
+    try {
+      console.log('Processing referral commissions for investment:', investment.id)
+
+      const user = investment.user
+      
+      if (!user.referredBy) {
+        console.log('User has no referrer, skipping commissions')
+        return
+      }
+
+      const level1Referrer = user.referrer
+      if (level1Referrer) {
+        const level1Commission = Number(investment.amount) * 0.07
+        
+        await prisma.referralEarning.create({
+          data: {
+            referrerId: level1Referrer.id,
+            userId: user.id,
+            investmentId: investment.id,
+            level: 1,
+            percentage: 7.00,
+            amount: level1Commission,
+            status: 'PENDING'
+          }
+        })
+        
+        console.log(`Level 1 commission: $${level1Commission.toFixed(2)} for referrer ${level1Referrer.email}`)
+
+        if (level1Referrer.referredBy) {
+          const level2Referrer = await prisma.user.findUnique({
+            where: { id: level1Referrer.referredBy }
+          })
+
+          if (level2Referrer) {
+            const level2Commission = Number(investment.amount) * 0.03
+            
+            await prisma.referralEarning.create({
+              data: {
+                referrerId: level2Referrer.id,
+                userId: user.id,
+                investmentId: investment.id,
+                level: 2,
+                percentage: 3.00,
+                amount: level2Commission,
+                status: 'PENDING'
+              }
+            })
+            
+            console.log(`Level 2 commission: $${level2Commission.toFixed(2)} for referrer ${level2Referrer.email}`)
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error('Error processing referral commissions:', error)
+    }
+  }
+
+  static async getMyInvestments(request: FastifyRequest, reply: FastifyReply) {
+    console.log('getMyInvestments called for user:', request.currentUser?.email)
+    
+    try {
+      const userId = request.currentUser!.id
+
+      const investments = await prisma.investment.findMany({
+        where: { userId },
+        include: {
+          plan: {
+            select: {
+              id: true,
+              name: true,
+              description: true
+            }
+          },
+          upgrades: {
+            where: {
+              status: 'PENDING'
+            },
+            orderBy: { requestDate: 'desc' },
+            take: 1
+          },
+          earlyWithdrawals: {
+            orderBy: { requestDate: 'desc' }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      })
+
+      console.log('Found investments:', investments.length)
+
+      return reply.code(200).send({
+        success: true,
+        data: investments.map(inv => {
+          const pendingUpgrade = inv.upgrades.length > 0 ? inv.upgrades[0] : null
+          
+          const currentDate = (inv.simulatedCurrentDate && inv.simulatedCurrentDate instanceof Date)
+            ? inv.simulatedCurrentDate
+            : new Date()
+          
+          let daysPassed = 0
+          let daysRemaining = 0
+          let currentReturn = Number(inv.accumulatedInterest || 0)
+          let isCompleted = inv.status === 'COMPLETED'
+          
+          if (inv.status === 'ACTIVE' || inv.status === 'COMPLETED') {
+            if (inv.startDate) {
+              const baseDate = inv.lastUpgradeDate || inv.startDate
+              daysPassed = calculateDaysPassedServer(baseDate, null, currentDate)
+              
+              if (inv.status === 'ACTIVE') {
+                currentReturn = calculateCurrentReturnServer(
+                  Number(inv.amount),
+                  Number(inv.effectiveROI),
+                  daysPassed,
+                  Number(inv.accumulatedInterest || 0)
+                )
+              }
+            }
+            
+            if (inv.endDate) {
+              daysRemaining = calculateDaysRemainingServer(inv.endDate, currentDate)
+              
+              if (daysRemaining <= 0 && inv.status === 'ACTIVE') {
+                isCompleted = true
+              }
+            }
+          }
+          
+          const withdrawnProfits = Number(inv.withdrawnProfits || 0)
+          const availableProfit = Math.max(0, currentReturn - withdrawnProfits)
+          
+          const bonusAmount = Number(inv.bonusAmount || 0)
+          
+          const createdAt = new Date(inv.createdAt)
+          const totalDaysPassed = Math.floor((currentDate.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
+          
+          const halfDurationDays = (inv.duration / 2) * 30
+          
+          const isBonusUnlocked = totalDaysPassed >= halfDurationDays
+          
+          const bonusWithdrawn = inv.bonusWithdrawn || false
+          
+          console.log(`📊 Investment ${inv.id.substring(0, 8)}... (${inv.plan.name}):`, {
+            status: inv.status,
+            amount: Number(inv.amount),
+            effectiveROI: Number(inv.effectiveROI),
+            daysPassed,
+            accumulatedInterest: Number(inv.accumulatedInterest || 0).toFixed(2),
+            currentReturn: currentReturn.toFixed(2),
+            withdrawnProfits: withdrawnProfits.toFixed(2),
+            availableProfit: availableProfit.toFixed(2),
+            bonusAmount: bonusAmount.toFixed(2),
+            duration: inv.duration,
+            createdAt: createdAt.toISOString(),
+            totalDaysPassed,
+            halfDurationDays,
+            isBonusUnlocked: `${isBonusUnlocked} (${totalDaysPassed}/${halfDurationDays} days)`,
+            bonusWithdrawn,
+            isCompleted,
+            simulatedDate: inv.simulatedCurrentDate ? currentDate.toISOString() : 'REAL TIME'
+          })
+          
+          return {
+            id: inv.id,
+            userId: inv.userId,
+            planId: inv.planId,
+            amount: inv.amount,
+            currency: inv.currency,
+            planName: inv.plan.name,
+            roi: inv.roi,
+            duration: inv.duration,
+            durationBonus: inv.durationBonus,
+            bonusAmount: inv.bonusAmount,
+            bonusUnlockedAt: inv.bonusUnlockedAt,
+            bonusWithdrawn: inv.bonusWithdrawn,
+            isBonusUnlocked,
+            effectiveROI: inv.effectiveROI,
+            status: inv.status,
+            startDate: inv.startDate,
+            endDate: inv.endDate,
+            expectedReturn: inv.expectedReturn,
+            totalReturn: inv.totalReturn,
+            transactionHash: inv.transactionHash,
+            withdrawalRequested: inv.withdrawalRequested,
+            accumulatedInterest: inv.accumulatedInterest || 0,
+            withdrawnProfits: inv.withdrawnProfits || 0,
+            lastUpgradeDate: inv.lastUpgradeDate,
+            language: inv.language,
+            createdAt: inv.createdAt,
+            updatedAt: inv.updatedAt,
+            daysPassed: daysPassed,
+            daysRemaining: daysRemaining,
+            currentReturn: parseFloat(currentReturn.toFixed(2)),
+            availableProfit: parseFloat(availableProfit.toFixed(2)),
+            isCompleted: isCompleted,
+            isSimulated: !!(inv.simulatedCurrentDate),
+            simulatedDate: inv.simulatedCurrentDate,
+            plan: inv.plan,
+            pendingUpgrade: pendingUpgrade ? {
+              id: pendingUpgrade.id,
+              targetPackage: pendingUpgrade.newPackage,
+              newAmount: Number(inv.amount) + Number(pendingUpgrade.additionalAmount),
+              additionalAmount: pendingUpgrade.additionalAmount,
+              status: pendingUpgrade.status,
+              requestDate: pendingUpgrade.requestDate
+            } : null,
+            earlyWithdrawals: inv.earlyWithdrawals
+          }
+        })
+      })
+
+    } catch (error: any) {
+      console.error('Error in getMyInvestments:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to fetch investments'
+      })
+    }
+  }
+
+  static async getInvestment(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+      const { id } = request.params as { id: string }
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id,
+          userId
+        },
+        include: {
+          plan: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              username: true
+            }
+          },
+          upgrades: {
+            orderBy: { requestDate: 'desc' }
+          },
+          earlyWithdrawals: {
+            orderBy: { requestDate: 'desc' }
+          }
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found'
+        })
+      }
+
+      return reply.code(200).send({
+        success: true,
+        data: investment
+      })
+
+    } catch (error: any) {
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to fetch investment'
+      })
+    }
+  }
+
+  static async confirmPayment(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+      const { id } = request.params as { id: string }
+      const { txHash } = request.body as ConfirmPaymentBody
+
+      const isEthTx = txHash.startsWith('0x') && txHash.length === 66
+      const isTronTx = txHash.length === 64 && /^[a-f0-9]+$/i.test(txHash)
+
+      if (!txHash || (!isEthTx && !isTronTx)) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Valid transaction hash is required'
+        })
+      }
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id,
+          userId,
+          status: 'PENDING'
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found or already confirmed'
+        })
+      }
+
+      const existingTx = await prisma.investment.findFirst({
+        where: {
+          transactionHash: txHash,
+          id: { not: id }
+        }
+      })
+
+      if (existingTx) {
+        return reply.code(400).send({
+          success: false,
+          error: 'This transaction hash is already used'
+        })
+      }
+
+      const now = new Date()
+      const endDate = new Date(now)
+      endDate.setMonth(endDate.getMonth() + investment.duration)
+
+      const updatedInvestment = await prisma.investment.update({
+        where: { id },
+        data: {
+          status: 'ACTIVE',
+          transactionHash: txHash,
+          startDate: now,
+          endDate
+        }
+      })
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'CONFIRM_INVESTMENT',
+          resource: 'INVESTMENT',
+          details: `Confirmed investment ${id} with tx ${txHash}`,
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'],
+          success: true
+        }
+      })
+
+      return reply.code(200).send({
+        success: true,
+        message: 'Investment confirmed successfully',
+        data: updatedInvestment
+      })
+
+    } catch (error: any) {
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to confirm payment'
+      })
+    }
+  }
+
+  static async upgradeInvestment(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+      const { id: investmentId } = request.params as { id: string }
+      const { 
+        additionalAmount, 
+        newPackage, 
+        paymentMethod, 
+        senderWalletAddress,
+        accumulatedInterest 
+      } = request.body as UpgradeInvestmentBody
+
+      console.log('Upgrade request:', { 
+        investmentId, 
+        userId, 
+        additionalAmount, 
+        newPackage, 
+        paymentMethod, 
+        senderWalletAddress,
+        accumulatedInterest 
+      })
+
+      if (paymentMethod === 'telegram') {
+        if (!senderWalletAddress || senderWalletAddress.trim() === '') {
+          return reply.code(400).send({
+            success: false,
+            error: 'Sender wallet address is required for Telegram payment'
+          })
+        }
+
+        const trc20Regex = /^T[A-Za-z1-9]{33}$/
+        if (!trc20Regex.test(senderWalletAddress.trim())) {
+          return reply.code(400).send({
+            success: false,
+            error: 'Invalid TRC-20 address format'
+          })
+        }
+      }
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id: investmentId,
+          userId,
+          status: 'ACTIVE'
+        },
+        include: {
+          plan: true,
+          user: {
+            select: {
+              email: true,
+              username: true
+            }
+          }
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found or not active'
+        })
+      }
+
+      const baseDate = investment.lastUpgradeDate || investment.startDate || investment.createdAt
+      const currentDate = (investment.simulatedCurrentDate && investment.simulatedCurrentDate instanceof Date)
+        ? investment.simulatedCurrentDate
+        : new Date()
+      
+      const daysPassed = calculateDaysPassedServer(baseDate, null, currentDate)
+
+      console.log('📅 Date calculation for upgrade:', {
+        baseDate: baseDate.toISOString(),
+        currentDate: currentDate.toISOString(),
+        daysPassed,
+        isSimulated: !!(investment.simulatedCurrentDate)
+      })
+
+      if (daysPassed === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Cannot upgrade investment on the same day it was created'
+        })
+      }
+
+      const existingPendingUpgrade = await prisma.investmentUpgrade.findFirst({
+        where: {
+          investmentId,
+          status: 'PENDING'
+        }
+      })
+
+      if (existingPendingUpgrade) {
+        return reply.code(400).send({
+          success: false,
+          error: 'You already have a pending upgrade request for this investment'
+        })
+      }
+
+      if (investment.lastUpgradeDate) {
+        const lastUpgrade = new Date(investment.lastUpgradeDate)
+        const today = currentDate
+        const isSameDay = 
+          lastUpgrade.getFullYear() === today.getFullYear() &&
+          lastUpgrade.getMonth() === today.getMonth() &&
+          lastUpgrade.getDate() === today.getDate()
+
+        if (isSameDay) {
+          return reply.code(400).send({
+            success: false,
+            error: 'Cannot upgrade twice in one day. Please wait until tomorrow.'
+          })
+        }
+      }
+
+      const packageKey = newPackage.toLowerCase()
+      const newPackageInfo = PACKAGES[packageKey as keyof typeof PACKAGES]
+      
+      if (!newPackageInfo) {
+        console.log('Invalid package key:', packageKey, 'Available:', Object.keys(PACKAGES))
+        return reply.code(400).send({
+          success: false,
+          error: `Invalid package. Available packages: ${Object.keys(PACKAGES).join(', ')}`
+        })
+      }
+
+      const currentAmount = Number(investment.amount)
+      const totalAmount = currentAmount + additionalAmount
+      
+      if (totalAmount < newPackageInfo.min) {
+        return reply.code(400).send({
+          success: false,
+          error: `Total amount must be at least $${newPackageInfo.min} for ${newPackageInfo.name} package`
+        })
+      }
+
+      if (totalAmount > newPackageInfo.max) {
+        return reply.code(400).send({
+          success: false,
+          error: `Total amount must not exceed $${newPackageInfo.max} for ${newPackageInfo.name} package`
+        })
+      }
+
+      const adminWalletConfig = await prisma.systemConfig.findUnique({
+        where: { key: 'STAKING_WALLET_USDT_TRC20' }
+      })
+
+      const adminWallet = adminWalletConfig?.value || process.env.ADMIN_TRON_WALLET_ADDRESS
+
+      if (!adminWallet) {
+        return reply.code(503).send({
+          success: false,
+          error: 'Admin wallet not configured. Please contact support.'
+        })
+      }
+
+      const daysRemaining = Math.ceil(
+        (investment.endDate!.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24)
+      )
+      
+      const newEndDate = new Date(investment.endDate!)
+
+      const currentAccumulated = accumulatedInterest !== undefined 
+        ? accumulatedInterest 
+        : calculateCurrentReturn(currentAmount, Number(investment.effectiveROI), investment.duration * 30, daysPassed)
+
+      const upgrade = await prisma.investmentUpgrade.create({
+        data: {
+          investmentId,
+          userId,
+          oldPackage: investment.plan.name,
+          newPackage: newPackageInfo.name,
+          oldAPY: Number(investment.roi),
+          newAPY: newPackageInfo.monthlyRate,
+          additionalAmount,
+          oldEndDate: investment.endDate!,
+          newEndDate,
+          adminWalletAddress: adminWallet,
+          senderWalletAddress: senderWalletAddress?.trim() || null,
+          accumulatedInterest: currentAccumulated,
+          status: 'PENDING'
+        }
+      })
+
+      console.log('Upgrade request created:', upgrade.id)
+      console.log('Accumulated interest saved:', currentAccumulated)
+
+      return reply.send({
+        success: true,
+        message: 'Upgrade request submitted successfully. Awaiting payment confirmation.',
+        data: {
+          upgradeId: upgrade.id,
+          investmentId: investment.id,
+          oldPackage: investment.plan.name,
+          newPackage: newPackageInfo.name,
+          oldAPY: Number(investment.roi),
+          newAPY: newPackageInfo.monthlyRate,
+          oldAmount: currentAmount,
+          additionalAmount,
+          totalAmount,
+          newEndDate: newEndDate.toISOString(),
+          adminWallet: adminWallet,
+          senderWallet: senderWalletAddress?.trim() || null,
+          accumulatedInterest: currentAccumulated,
+          status: 'PENDING',
+          message: paymentMethod === 'telegram' 
+            ? `Please send ${additionalAmount} USDT (TRC-20) to the admin wallet`
+            : `After admin approval, your balance will be $${totalAmount.toFixed(2)} with ${newPackageInfo.monthlyRate}% monthly rate`
+        }
+      })
+
+    } catch (error: any) {
+      console.error('Error upgrading investment:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to upgrade investment'
+      })
+    }
+  }
+
+  static async earlyWithdrawInvestment(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+      const { id: investmentId } = request.params as { id: string }
+      const { trc20Address } = request.body as { trc20Address?: string }
+  
+      console.log('Early withdrawal request:', { investmentId, userId, trc20Address })
+  
+      if (trc20Address) {
+        const trc20Regex = /^T[A-Za-z1-9]{33}$/
+        if (!trc20Regex.test(trc20Address.trim())) {
+          return reply.code(400).send({
+            success: false,
+            error: 'Invalid TRC-20 address format'
+          })
+        }
+      }
+  
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id: investmentId,
+          userId,
+          status: 'ACTIVE'
+        },
+        include: {
+          plan: true,
+          user: {
+            select: {
+              email: true,
+              username: true
+            }
+          }
+        }
+      })
+  
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found or not active'
+        })
+      }
+  
+      const currentDate = (investment.simulatedCurrentDate && investment.simulatedCurrentDate instanceof Date)
+        ? investment.simulatedCurrentDate
+        : new Date()
+      
+      const daysPassed = calculateDaysPassedServer(investment.startDate!, null, currentDate)
+  
+      console.log('📅 Early withdrawal date calculation:', {
+        startDate: investment.startDate?.toISOString(),
+        currentDate: currentDate.toISOString(),
+        daysPassed,
+        isSimulated: !!(investment.simulatedCurrentDate)
+      })
+  
+      if (daysPassed > 30) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Early withdrawal is only available within the first 30 days'
+        })
+      }
+  
+      const existingWithdrawal = await prisma.earlyWithdrawal.findFirst({
+        where: {
+          investmentId,
+          status: 'PENDING'
+        }
+      })
+  
+      if (existingWithdrawal) {
+        return reply.code(400).send({
+          success: false,
+          error: 'You already have a pending early withdrawal request for this investment'
+        })
+      }
+  
+      const withdrawnProfits = Number(investment.withdrawnProfits) || 0
+      const accumulatedInterest = Number(investment.accumulatedInterest) || 0
+      
+      const { earnedInterest, totalAmount } = calculateEarlyWithdraw(
+        Number(investment.amount),
+        Number(investment.effectiveROI),
+        daysPassed,
+        accumulatedInterest,
+        withdrawnProfits
+      )
+  
+      console.log('📊 Early withdrawal calculation:', {
+        principal: Number(investment.amount),
+        earnedInterest: earnedInterest + ' (FORFEITED)',
+        withdrawnProfits,
+        totalAmount: totalAmount + ' (principal - withdrawn)',
+        daysPassed
+      })
+  
+      const withdrawal = await prisma.earlyWithdrawal.create({
+        data: {
+          investmentId,
+          userId,
+          investmentAmount: Number(investment.amount),
+          daysInvested: daysPassed,
+          earnedInterest: earnedInterest,
+          withdrawnProfits: withdrawnProfits,
+          totalAmount: totalAmount,
+          trc20Address: trc20Address?.trim() || null,
+          status: 'PENDING'
+        }
+      })
+  
+      console.log('✅ Early withdrawal request created:', withdrawal.id)
+  
+      try {
+        const { notifyEarlyWithdrawal } = await import('../bot/telegram-bot')
+      
+        await notifyEarlyWithdrawal({
+          withdrawalId: withdrawal.id,
+          investmentId: investment.id,
+          userId: userId,
+          userEmail: investment.user.email || 'N/A',
+          planName: investment.plan.name,
+          investmentAmount: Number(investment.amount),
+          daysInvested: daysPassed,
+          earnedInterest: earnedInterest,
+          withdrawnProfits: withdrawnProfits,
+          totalAmount: totalAmount,
+          trc20Address: trc20Address?.trim() || 'Not provided',
+          language: investment.language || 'en'
+        })
+      
+        console.log('✅ Telegram notification sent successfully')
+      } catch (telegramError) {
+        console.error('⚠️ Failed to send Telegram notification:', telegramError)
+      }
+  
+      return reply.send({
+        success: true,
+        message: 'Early withdrawal request submitted successfully. Admin will review your request.',
+        data: {
+          withdrawalId: withdrawal.id,
+          investmentAmount: Number(investment.amount),
+          daysInvested: daysPassed,
+          earnedInterest: earnedInterest,
+          withdrawnProfits: withdrawnProfits,
+          totalAmount: totalAmount,
+          trc20Address: trc20Address?.trim() || null,
+          status: 'PENDING',
+          note: 'Earned interest is forfeited as penalty. Only principal minus withdrawn profits will be returned.'
+        }
+      })
+  
+    } catch (error: any) {
+      console.error('❌ Error processing early withdrawal:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to process early withdrawal'
+      })
+    }
+  }
+
+  static async partialWithdrawInvestment(request: FastifyRequest, reply: FastifyReply) {
+    const userId = request.currentUser!.id
+    const { id } = request.params as { id: string }
+    const { amount, trc20Address, withdrawType } = request.body as {
+      amount?: number
+      trc20Address: string
+      withdrawType?: 'profit' | 'bonus'
+    }
+
+    console.log('🚀 partialWithdrawInvestment called:', {
+      userId,
+      investmentId: id,
+      requestedAmount: amount,
+      trc20Address,
+      withdrawType
+    })
+
+    try {
+      // ✅ 1. ПОЛУЧАЕМ ЗАПРОШЕННУЮ СУММУ ИЗ REQUEST BODY
+      const requestedAmount = amount ? Number(amount) : 0
+
+      console.log('💰 Requested amount from body:', requestedAmount)
+
+      // Валидация TRC-20 адреса
+      if (!trc20Address || !trc20Address.trim()) {
+        return reply.code(400).send({
+          success: false,
+          error: 'TRC-20 address is required'
+        })
+      }
+
+      const trc20Regex = /^T[A-Za-z1-9]{33}$/
+      if (!trc20Regex.test(trc20Address.trim())) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid TRC-20 address format'
+        })
+      }
+
+      // ✅ 2. ВАЛИДАЦИЯ СУММЫ (ТОЛЬКО ДЛЯ PROFIT)
+      if (withdrawType === 'profit') {
+        if (!requestedAmount || requestedAmount <= 0) {
+          return reply.code(400).send({
+            success: false,
+            error: 'Amount must be greater than 0'
+          })
+        }
+      }
+
+      // Поиск инвестиции
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id,
+          userId,
+          status: 'ACTIVE'
+        },
+        include: {
+          plan: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              username: true
+            }
+          }
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found or not active'
+        })
+      }
+
+      // Проверка на существующий запрос
+      if (investment.withdrawalRequested) {
+        return reply.code(400).send({
+          success: false,
+          error: 'You already have a pending withdrawal request for this investment'
+        })
+      }
+
+      // ✅ 3. РАСЧЁТ ДОСТУПНОГО ПРИБЫЛИ (ДЛЯ ВАЛИДАЦИИ)
+      const investmentAmount = Number(investment.amount)
+      const accumulatedInterest = Number(investment.accumulatedInterest) || 0
+      const withdrawnProfits = Number(investment.withdrawnProfits) || 0
+
+      const currentDate = investment.simulatedCurrentDate || new Date()
+      const baseDate = investment.lastUpgradeDate || investment.startDate
+      
+      const daysPassed = baseDate 
+        ? Math.floor((currentDate.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24))
+        : 0
+
+      const dailyRate = Number(investment.effectiveROI) / 30
+      const newPeriodProfit = (investmentAmount * dailyRate * daysPassed) / 100
+      const totalProfit = accumulatedInterest + newPeriodProfit
+      const availableProfit = Math.max(0, totalProfit - withdrawnProfits)
+
+      console.log('📊 Profit calculation:', {
+        investmentAmount,
+        accumulatedInterest,
+        withdrawnProfits,
+        daysPassed,
+        dailyRate,
+        newPeriodProfit,
+        totalProfit,
+        availableProfit,
+        requestedAmount
+      })
+
+      // ✅ 4. ВАЛИДАЦИЯ СУММЫ (ТОЛЬКО ДЛЯ PROFIT)
+      if (withdrawType === 'profit') {
+        if (requestedAmount > availableProfit) {
+          return reply.code(400).send({
+            success: false,
+            error: `Insufficient profit. Available: $${availableProfit.toFixed(2)}, Requested: $${requestedAmount.toFixed(2)}`
+          })
+        }
+      }
+
+      // ✅ 5. ОПРЕДЕЛЕНИЕ ТИПА ВЫВОДА И СУММЫ
+      let finalAmount = requestedAmount
+      let finalWithdrawType: 'PROFIT' | 'BONUS' = 'PROFIT'
+
+      if (withdrawType === 'bonus') {
+        // Расчёт бонуса
+        const duration = investment.duration
+        let calculatedBonus = 0
+
+        if (duration !== 3 && investmentAmount >= 500) {
+          if (investmentAmount >= 1000) {
+            calculatedBonus = duration === 6 || duration === 12 ? 500 : 0
+          } else {
+            calculatedBonus = duration === 6 || duration === 12 ? 200 : 0
+          }
+        }
+
+        console.log('🎁 Bonus calculation:', {
+          duration,
+          investmentAmount,
+          calculatedBonus
+        })
+
+        if (calculatedBonus <= 0) {
+          return reply.code(400).send({
+            success: false,
+            error: 'No bonus available for this investment'
+          })
+        }
+
+        finalAmount = calculatedBonus
+        finalWithdrawType = 'BONUS'
+      }
+
+      console.log('💵 Final withdrawal amount:', finalAmount)
+      console.log('📝 Final withdrawal type:', finalWithdrawType)
+
+      // ✅ 6. СОЗДАНИЕ ЗАПИСИ С ЗАПРОШЕННОЙ СУММОЙ
+      const partialWithdrawal = await prisma.partialWithdrawal.create({
+        data: {
+          investmentId: investment.id,
+          userId: userId,  // ✅ ДОБАВЬ ЭТУ СТРОКУ!
+          amount: finalAmount,  // ✅ ИСПОЛЬЗУЕМ ЗАПРОШЕННУЮ СУММУ!
+          type: finalWithdrawType,
+          trc20Address: trc20Address.trim(),
+          status: 'PENDING'
+        }
+      })
+
+      console.log('✅ Partial withdrawal created:', partialWithdrawal)
+
+      // Отправка уведомления в Telegram
+      try {
+        await notifyPartialWithdrawal({
+          withdrawalId: partialWithdrawal.id,
+          investmentId: investment.id,
+          userId: investment.userId,
+          userEmail: investment.user.email || '',
+          planName: investment.plan.name,
+          amount: finalAmount,  // ✅ ПЕРЕДАЁМ ЗАПРОШЕННУЮ СУММУ!
+          investmentAmount: investmentAmount,
+          totalWithdrawn: withdrawnProfits,
+          trc20Address: trc20Address.trim(),
+          language: (request.body as any).language || 'en'
+        })
+
+        console.log('✅ Telegram notification sent')
+      } catch (telegramError) {
+        console.error('❌ Failed to send Telegram notification:', telegramError)
+      }
+
+      const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'dxcapital_bot'
+      const botLink = `https://t.me/${botUsername}?start=partial_${partialWithdrawal.id}`
+
+      return reply.code(200).send({
+        success: true,
+        message: `${finalWithdrawType === 'BONUS' ? 'Bonus' : 'Profit'} withdrawal request created. Admin will review your request shortly.`,
+        botLink: botLink,
+        withdrawalId: partialWithdrawal.id,
+        data: {
+          withdrawalId: partialWithdrawal.id,
+          type: finalWithdrawType,
+          amount: finalAmount,  // ✅ ВОЗВРАЩАЕМ ЗАПРОШЕННУЮ СУММУ!
+          trc20Address: trc20Address.trim(),
+          status: 'PENDING'
+        }
+      })
+
+    } catch (error) {
+      console.error('❌ Partial withdraw error:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'An error occurred while processing your withdrawal request'
+      })
+    }
+  }
+
+
+
+
+  static async requestWithdrawal(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+      const { id: investmentId } = request.params as { id: string }
+      const { trc20Address } = request.body as { trc20Address: string }
+
+      console.log('Withdrawal request:', { investmentId, userId, trc20Address })
+
+      const trc20Regex = /^T[A-Za-z1-9]{33}$/
+      if (!trc20Regex.test(trc20Address.trim())) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid TRC-20 address format'
+        })
+      }
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id: investmentId,
+          userId
+        },
+        include: {
+          plan: true,
+          user: {
+            select: {
+              email: true,
+              username: true
+            }
+          }
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found'
+        })
+      }
+
+      if (investment.status !== 'COMPLETED' && investment.status !== 'ACTIVE') {
+        return reply.code(400).send({
+          success: false,
+          error: 'Investment is not ready for withdrawal'
+        })
+      }
+
+      if (investment.withdrawalRequested) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Withdrawal already requested for this investment'
+        })
+      }
+
+      const withdrawal = await prisma.withdrawalRequest.create({
+        data: {
+          investmentId,
+          userId,
+          amount: Number(investment.totalReturn),
+          trc20Address: trc20Address.trim(),
+          status: 'PENDING'
+        }
+      })
+
+      await prisma.investment.update({
+        where: { id: investmentId },
+        data: { withdrawalRequested: true }
+      })
+
+      try {
+        const { notifyWithdrawalRequest } = await import('../bot/telegram-bot')
+      
+        const amountNum = Number(investment.amount)
+        const totalReturnNum = Number(investment.totalReturn)
+        const profitNum = totalReturnNum - amountNum
+      
+        await notifyWithdrawalRequest({
+          withdrawalId: withdrawal.id,
+          investmentId: investment.id,
+          userId: userId,
+          userEmail: investment.user.email || 'N/A',
+          planName: investment.plan.name,
+          amount: totalReturnNum,
+          invested: amountNum,
+          profit: profitNum,
+          trc20Address: trc20Address.trim(),
+          language: investment.language || 'en'
+        })
+      
+        console.log('Withdrawal notification sent to Telegram')
+      } catch (telegramError) {
+        console.error('Failed to send Telegram notification:', telegramError)
+      }
+
+      return reply.send({
+        success: true,
+        message: 'Withdrawal request submitted successfully',
+        data: {
+          withdrawalId: withdrawal.id,
+          amount: Number(investment.totalReturn),
+          trc20Address: trc20Address.trim(),
+          status: 'PENDING'
+        }
+      })
+
+    } catch (error: any) {
+      console.error('Error requesting withdrawal:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to request withdrawal'
+      })
+    }
+  }
+
+  static async cancelInvestment(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+      const { id } = request.params as { id: string }
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id,
+          userId,
+          status: 'PENDING'
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found or cannot be cancelled'
+        })
+      }
+
+      await prisma.investment.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          completedAt: new Date()
+        }
+      })
+
+      return reply.code(200).send({
+        success: true,
+        message: 'Investment cancelled successfully'
+      })
+
+    } catch (error: any) {
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to cancel investment'
+      })
+    }
+  }
+
+  static async simulateDate(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+      const { investmentId, simulatedDate } = request.body as SimulateDateDto
+
+      console.log('🎮 Date simulation request:', { investmentId, userId, simulatedDate })
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id: investmentId,
+          userId
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found'
+        })
+      }
+
+      const newDate = simulatedDate ? new Date(simulatedDate) : null
+
+      await prisma.investment.update({
+        where: { id: investmentId },
+        data: {
+          simulatedCurrentDate: newDate
+        }
+      })
+
+      console.log('✅ Date simulation updated:', newDate ? newDate.toISOString() : 'RESET TO REAL TIME')
+
+      return reply.send({
+        success: true,
+        message: newDate ? 'Simulation date set successfully' : 'Simulation reset to real time',
+        data: {
+          investmentId,
+          simulatedDate: newDate,
+          isSimulated: !!newDate
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error in date simulation:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to simulate date'
+      })
+    }
+  }
+}

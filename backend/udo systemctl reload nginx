@@ -1,0 +1,28 @@
+[0;1;32m●[0m nginx.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/lib/systemd/system/nginx.service; enabled; vendor preset: enabled)
+     Active: [0;1;32mactive (running)[0m since Thu 2025-10-02 11:50:43 UTC; 3h 48min ago
+       Docs: man:nginx(8)
+    Process: 263368 ExecReload=/usr/sbin/nginx -g daemon on; master_process on; -s reload (code=exited, status=0/SUCCESS)
+   Main PID: 243129 (nginx)
+      Tasks: 7 (limit: 14314)
+     Memory: 9.1M
+        CPU: 897ms
+     CGroup: /system.slice/nginx.service
+             ├─243129 "nginx: master process /usr/sbin/nginx -g daemon on; master_process on;"
+             ├─263370 "nginx: worker process" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+             ├─263371 "nginx: worker process" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+             ├─263372 "nginx: worker process" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+             ├─263373 "nginx: worker process" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+             ├─263374 "nginx: worker process" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+             └─263375 "nginx: worker process" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+
+Oct 02 11:50:43 srv901950470.host systemd[1]: Starting A high performance web server and a reverse proxy server...
+Oct 02 11:50:43 srv901950470.host systemd[1]: Started A high performance web server and a reverse proxy server.
+Oct 02 15:28:47 srv901950470.host systemd[1]: Reloading A high performance web server and a reverse proxy server...
+Oct 02 15:28:47 srv901950470.host systemd[1]: Reloaded A high performance web server and a reverse proxy server.
+Oct 02 15:29:09 srv901950470.host systemd[1]: Reloading A high performance web server and a reverse proxy server...
+Oct 02 15:29:09 srv901950470.host systemd[1]: Reloaded A high performance web server and a reverse proxy server.
+Oct 02 15:31:35 srv901950470.host systemd[1]: Reloading A high performance web server and a reverse proxy server...
+Oct 02 15:31:35 srv901950470.host systemd[1]: Reloaded A high performance web server and a reverse proxy server.
+Oct 02 15:33:14 srv901950470.host systemd[1]: Reloading A high performance web server and a reverse proxy server...
+Oct 02 15:33:14 srv901950470.host systemd[1]: Reloaded A high performance web server and a reverse proxy server.

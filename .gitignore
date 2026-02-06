@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+vendor/
+__pycache__/
+*.pyc
+venv/
+
+# Build
+.next/
+dist/
+build/
+
+# Env
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Uploads
+uploads/
+
+# Prisma
+prisma/*.db

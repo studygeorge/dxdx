@@ -1,0 +1,143 @@
+import Fastify, { FastifyInstance } from 'fastify'
+import cors from '@fastify/cors'
+import jwt from '@fastify/jwt'
+import helmet from '@fastify/helmet'
+import rateLimit from '@fastify/rate-limit'
+import cookie from '@fastify/cookie'
+import { PrismaClient } from '@prisma/client'
+import dotenv from 'dotenv'
+
+dotenv.config()
+
+import authRoutes from './routes/auth'
+
+const prisma = new PrismaClient()
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    prisma: PrismaClient
+  }
+}
+
+export async function build(opts = {}) {
+  const app: FastifyInstance = Fastify({
+    logger: {
+      level: process.env.LOG_LEVEL || 'info'
+    },
+    ...opts
+  })
+
+  app.decorate('prisma', prisma)
+
+  // Регистрируем cookie support
+  await app.register(cookie, {
+    secret: process.env.SESSION_SECRET,
+    parseOptions: {}
+  })
+
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "https:", "wss:"],
+      },
+    },
+  })
+
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000']
+  await app.register(cors, {
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  })
+
+  await app.register(rateLimit, {
+    max: async (request) => {
+      if (request.url.includes('/auth/')) {
+        return 15
+      }
+      return 100
+    },
+    timeWindow: '1 minute',
+    errorResponseBuilder: () => ({
+      error: 'Too many requests',
+      message: 'Rate limit exceeded'
+    })
+  })
+
+  await app.register(jwt, {
+    secret: process.env.JWT_SECRET!,
+    sign: {
+      expiresIn: process.env.JWT_EXPIRES_IN || '15m'
+    }
+  })
+
+  const apiPrefix = process.env.API_PREFIX || '/api/v1'
+  await app.register(authRoutes, { prefix: `${apiPrefix}/auth` })
+
+  app.get('/health', async () => {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      return { 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        database: 'connected',
+        web3: {
+          supportedNetworks: ['ethereum', 'polygon', 'bsc'],
+          rpcStatus: 'available'
+        }
+      }
+    } catch (error) {
+      return { 
+        status: 'error', 
+        timestamp: new Date().toISOString(),
+        database: 'disconnected',
+        web3: { status: 'error' }
+      }
+    }
+  })
+
+  app.get('/web3/info', async () => {
+    return {
+      supportedWallets: ['MetaMask', 'WalletConnect', 'Coinbase Wallet'],
+      supportedNetworks: [
+        { name: 'Ethereum', chainId: 1, symbol: 'ETH' },
+        { name: 'Polygon', chainId: 137, symbol: 'MATIC' },
+        { name: 'BSC', chainId: 56, symbol: 'BNB' }
+      ],
+      features: ['SIWE', 'ENS', 'Multi-wallet']
+    }
+  })
+
+  app.setErrorHandler(async (error, request, reply) => {
+    app.log.error(error)
+    
+    if (process.env.NODE_ENV === 'production') {
+      return reply.code(500).send({
+        success: false,
+        error: 'Internal server error'
+      })
+    }
+    
+    return reply.code(500).send({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    })
+  })
+
+  const gracefulShutdown = async () => {
+    app.log.info('Shutting down gracefully...')
+    await prisma.$disconnect()
+    process.exit(0)
+  }
+
+  process.on('SIGTERM', gracefulShutdown)
+  process.on('SIGINT', gracefulShutdown)
+
+  return app
+}

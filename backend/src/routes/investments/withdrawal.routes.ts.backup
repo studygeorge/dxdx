@@ -1,0 +1,642 @@
+import { FastifyInstance } from 'fastify'
+import { PrismaClient } from '@prisma/client'
+import { InvestmentsController } from '../../controllers/investments'
+import { notifyEarlyWithdrawal, notifyPartialWithdrawal } from './helpers/notifications.helper'
+
+const prisma = new PrismaClient()
+
+function getDurationBonus(duration: number, amount: number): number {
+  if (duration === 3) return 0
+  if (duration === 6 || duration === 12) {
+    if (amount >= 1000) return 500
+    if (amount >= 500) return 200
+  }
+  return 0
+}
+
+export async function withdrawalRoutes(app: FastifyInstance) {
+  // Early withdrawal
+  app.post('/:id/early-withdraw', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string }
+      const { trc20Address } = request.body as { trc20Address: string }
+      const userId = request.currentUser!.id
+
+      console.log('⚡ Early withdrawal request:', { investmentId: id, userId, trc20Address })
+
+      const trc20Regex = /^T[A-Za-z1-9]{33}$/
+      if (!trc20Address || !trc20Regex.test(trc20Address)) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid TRC-20 address format'
+        })
+      }
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id,
+          userId,
+          status: 'ACTIVE'
+        },
+        include: {
+          plan: true,
+          user: {
+            select: {
+              email: true,
+              username: true
+            }
+          }
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found or not active'
+        })
+      }
+
+      const createdDate = new Date(investment.createdAt)
+      const now = new Date()
+      const totalDaysPassed = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24))
+
+      console.log('⏰ Early withdrawal check:', {
+        createdAt: createdDate.toISOString(),
+        now: now.toISOString(),
+        totalDaysPassed,
+        limit: 30
+      })
+
+      if (totalDaysPassed > 30) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Early withdrawal is only available within the first 30 days from investment creation'
+        })
+      }
+
+      let baseDate = investment.lastUpgradeDate || investment.startDate!
+      const daysSinceBase = Math.floor((now.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24))
+
+      const monthlyRate = Number(investment.effectiveROI)
+      const dailyRate = monthlyRate / 30
+      const earnedInterest = (Number(investment.amount) * dailyRate * daysSinceBase) / 100
+      const accumulatedInterest = Number(investment.accumulatedInterest || 0)
+      const totalEarned = earnedInterest + accumulatedInterest
+      const withdrawnProfits = Number(investment.withdrawnProfits || 0)
+      const totalAmount = Number(investment.amount) - withdrawnProfits
+
+      console.log('💰 Early withdrawal calculation:', {
+        baseDate: baseDate.toISOString(),
+        daysSinceBase,
+        earnedInterest,
+        accumulatedInterest,
+        totalEarned,
+        withdrawnProfits,
+        totalAmount
+      })
+
+      const earlyWithdrawal = await prisma.earlyWithdrawal.create({
+        data: {
+          investmentId: investment.id,
+          userId: userId,
+          investmentAmount: investment.amount,
+          daysInvested: totalDaysPassed,
+          earnedInterest: totalEarned,
+          withdrawnProfits: withdrawnProfits,
+          totalAmount: totalAmount,
+          trc20Address: trc20Address.trim(),
+          status: 'PENDING'
+        }
+      })
+
+      const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'dxcapital_bot'
+      const botLink = `https://t.me/${BOT_USERNAME}?start=early_${earlyWithdrawal.id}`
+
+      try {
+        await notifyEarlyWithdrawal({
+          withdrawalId: earlyWithdrawal.id,
+          investmentId: investment.id,
+          userId: userId,
+          userEmail: investment.user.email || 'N/A',
+          planName: investment.plan.name,
+          investmentAmount: Number(investment.amount),
+          earnedInterest: totalEarned,
+          withdrawnProfits: withdrawnProfits,
+          totalAmount: totalAmount,
+          daysInvested: totalDaysPassed,
+          trc20Address: trc20Address.trim(),
+          language: investment.language || 'ru'
+        })
+
+        console.log('✅ Telegram notification sent to admin for early withdrawal:', earlyWithdrawal.id)
+      } catch (telegramError) {
+        console.error('⚠️ Failed to send Telegram notification:', telegramError)
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'EARLY_WITHDRAWAL_REQUEST',
+          resource: 'INVESTMENT',
+          details: JSON.stringify({
+            investmentId: id,
+            earlyWithdrawalId: earlyWithdrawal.id,
+            investmentAmount: investment.amount.toString(),
+            totalDaysPassed,
+            daysInvested: totalDaysPassed,
+            earnedInterest: totalEarned,
+            withdrawnProfits: withdrawnProfits,
+            totalAmount: totalAmount,
+            trc20Address,
+            planName: investment.plan.name,
+            botLink
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      return reply.send({
+        success: true,
+        message: 'Early withdrawal request created. Admin will review your request shortly.',
+        data: {
+          earlyWithdrawalId: earlyWithdrawal.id,
+          investmentAmount: Number(investment.amount),
+          earnedInterest: totalEarned,
+          withdrawnProfits: withdrawnProfits,
+          totalAmount: totalAmount,
+          daysInvested: totalDaysPassed,
+          status: 'PENDING',
+          botLink,
+          note: 'Earned interest is forfeited as penalty for early withdrawal'
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Early withdrawal error:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to process early withdrawal'
+      })
+    }
+  })
+
+  // Partial withdrawal (profit or bonus)
+  app.post('/:id/partial-withdraw', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string }
+      const { trc20Address, withdrawType } = request.body as { 
+        trc20Address: string
+        withdrawType: 'profit' | 'bonus'
+      }
+      const userId = request.currentUser!.id
+
+      console.log('💰 Withdrawal request:', { 
+        investmentId: id, 
+        userId, 
+        withdrawType, 
+        trc20Address 
+      })
+
+      if (!withdrawType || !['profit', 'bonus'].includes(withdrawType)) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid withdrawType. Must be "profit" or "bonus"'
+        })
+      }
+
+      const trc20Regex = /^T[A-Za-z1-9]{33}$/
+      if (!trc20Address || !trc20Regex.test(trc20Address)) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid TRC-20 address format'
+        })
+      }
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id,
+          userId,
+          status: 'ACTIVE'
+        },
+        include: {
+          plan: true,
+          user: {
+            select: {
+              email: true,
+              username: true
+            }
+          }
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found or not active'
+        })
+      }
+
+      let withdrawalAmount = 0
+      let description = ''
+      let withdrawalType = ''
+
+      if (withdrawType === 'profit') {
+        console.log('🔍 Profit withdrawal - dates DEBUG:', {
+          investmentId: investment.id,
+          startDate: investment.startDate,
+          lastUpgradeDate: investment.lastUpgradeDate,
+          createdAt: investment.createdAt,
+          accumulatedInterest: investment.accumulatedInterest,
+          withdrawnProfits: investment.withdrawnProfits
+        })
+
+        const now = new Date()
+        let baseDate: Date
+        
+        if (investment.lastUpgradeDate) {
+          baseDate = new Date(investment.lastUpgradeDate)
+          console.log('✅ Using lastUpgradeDate as base')
+        } else if (investment.startDate) {
+          baseDate = new Date(investment.startDate)
+          console.log('✅ Using startDate as base')
+        } else {
+          baseDate = new Date(investment.createdAt)
+          console.log('✅ Using createdAt as base')
+        }
+        
+        const daysPassed = Math.floor((now.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24))
+        const monthlyRate = Number(investment.effectiveROI)
+        const dailyRate = monthlyRate / 30
+        const newPeriodProfit = (Number(investment.amount) * dailyRate * daysPassed) / 100
+        const accumulatedInterest = Number(investment.accumulatedInterest || 0)
+        const totalProfit = newPeriodProfit + accumulatedInterest
+        const withdrawnProfits = Number(investment.withdrawnProfits || 0)
+        const availableProfit = Math.max(0, totalProfit - withdrawnProfits)
+
+        console.log('📊 Profit calculation:', {
+          baseDate: baseDate.toISOString(),
+          daysPassed,
+          dailyRate: `${dailyRate.toFixed(4)}%`,
+          newPeriodProfit: newPeriodProfit.toFixed(2),
+          accumulatedInterest: accumulatedInterest.toFixed(2),
+          totalProfit: totalProfit.toFixed(2),
+          withdrawnProfits: withdrawnProfits.toFixed(2),
+          availableProfit: availableProfit.toFixed(2)
+        })
+
+        if (availableProfit <= 0) {
+          return reply.code(400).send({
+            success: false,
+            error: 'No profit available for withdrawal'
+          })
+        }
+
+        withdrawalAmount = availableProfit
+        description = 'Partial profit withdrawal'
+        withdrawalType = 'PROFIT'
+
+      } else if (withdrawType === 'bonus') {
+        const bonusAmount = getDurationBonus(investment.duration, Number(investment.amount))
+
+        console.log('🎁 Bonus withdrawal - validation:', {
+          bonusAmount,
+          duration: investment.duration,
+          amount: Number(investment.amount),
+          createdAt: investment.createdAt,
+          bonusWithdrawn: investment.bonusWithdrawn
+        })
+
+        if (bonusAmount <= 0) {
+          return reply.code(400).send({
+            success: false,
+            error: 'No bonus available for this investment'
+          })
+        }
+
+        if (investment.duration < 6) {
+          return reply.code(400).send({
+            success: false,
+            error: 'Bonus is only available for investments created for 6 or 12 months'
+          })
+        }
+
+        if (investment.bonusWithdrawn) {
+          return reply.code(400).send({
+            success: false,
+            error: 'Bonus has already been withdrawn'
+          })
+        }
+
+        const now = new Date()
+        const createdAt = new Date(investment.createdAt)
+        const daysPassed = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
+        const halfDurationDays = (investment.duration / 2) * 30
+        
+        console.log('🔍 Bonus unlock check:', {
+          duration: investment.duration,
+          createdAt: createdAt.toISOString(),
+          now: now.toISOString(),
+          daysPassed,
+          halfDurationDays,
+          isUnlocked: daysPassed >= halfDurationDays
+        })
+
+        if (daysPassed < halfDurationDays) {
+          const daysRemaining = Math.ceil(halfDurationDays - daysPassed)
+          return reply.code(400).send({
+            success: false,
+            error: `Bonus will be available after ${Math.ceil(investment.duration / 2)} months (${daysRemaining} days remaining)`
+          })
+        }
+
+        console.log('✅ Bonus available for withdrawal:', {
+          bonusAmount,
+          daysPassed,
+          halfDurationDays,
+          daysOverHalf: daysPassed - halfDurationDays
+        })
+
+        withdrawalAmount = bonusAmount
+        description = 'Duration bonus withdrawal'
+        withdrawalType = 'BONUS'
+      }
+
+      const withdrawal = await prisma.partialWithdrawal.create({
+        data: {
+          investmentId: investment.id,
+          userId: userId,
+          amount: withdrawalAmount,
+          trc20Address: trc20Address.trim(),
+          status: 'PENDING'
+        }
+      })
+
+      if (withdrawType === 'bonus') {
+        await prisma.investment.update({
+          where: { id },
+          data: { bonusWithdrawn: true }
+        })
+      }
+
+      const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'dxcapital_bot'
+      const botLink = `https://t.me/${BOT_USERNAME}?start=partial_${withdrawal.id}`
+
+      try {
+        await notifyPartialWithdrawal({
+          withdrawalId: withdrawal.id,
+          investmentId: investment.id,
+          userId: userId,
+          userEmail: investment.user.email || 'N/A',
+          planName: investment.plan.name,
+          investmentAmount: Number(investment.amount),
+          amount: withdrawalAmount,
+          totalWithdrawn: Number(investment.withdrawnProfits || 0) + withdrawalAmount,
+          trc20Address: trc20Address.trim(),
+          language: investment.language || 'ru'
+        })
+
+        console.log('✅ Telegram notification sent to admin for partial withdrawal:', withdrawal.id)
+      } catch (telegramError) {
+        console.error('⚠️ Failed to send Telegram notification:', telegramError)
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: `WITHDRAWAL_REQUEST_${withdrawType.toUpperCase()}`,
+          resource: 'INVESTMENT',
+          details: JSON.stringify({
+            investmentId: id,
+            withdrawalId: withdrawal.id,
+            withdrawType,
+            amount: withdrawalAmount,
+            trc20Address,
+            planName: investment.plan.name,
+            botLink
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      console.log('✅ Withdrawal request created (PENDING):', {
+        withdrawalId: withdrawal.id,
+        type: withdrawType,
+        amount: withdrawalAmount,
+        bonusWithdrawnFlag: withdrawType === 'bonus' ? true : undefined,
+        note: 'Investment fields will be updated after admin approval'
+      })
+
+      return reply.send({
+        success: true,
+        message: `${withdrawType === 'profit' ? 'Profit' : 'Bonus'} withdrawal request created. Admin will review your request shortly.`,
+        botLink: botLink,
+        withdrawalId: withdrawal.id,
+        data: {
+          withdrawalId: withdrawal.id,
+          type: withdrawalType,
+          amount: withdrawalAmount,
+          trc20Address: trc20Address.trim(),
+          status: 'PENDING'
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Withdrawal error:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to process withdrawal request'
+      })
+    }
+  })
+
+  // Full withdrawal
+  app.post('/:id/withdraw', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string }
+      const { trc20Address } = request.body as { trc20Address: string }
+      const userId = request.currentUser!.id
+
+      console.log('🏦 Full withdrawal request:', { investmentId: id, userId, trc20Address })
+
+      const trc20Regex = /^T[A-Za-z1-9]{33}$/
+      if (!trc20Address || !trc20Regex.test(trc20Address)) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid TRC-20 address format'
+        })
+      }
+
+      const investment = await prisma.investment.findFirst({
+        where: {
+          id,
+          userId
+        },
+        include: {
+          plan: true,
+          user: {
+            select: {
+              email: true,
+              username: true
+            }
+          }
+        }
+      })
+
+      if (!investment) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Investment not found'
+        })
+      }
+
+      console.log('✅ Investment found:', {
+        id: investment.id,
+        amount: investment.amount,
+        status: investment.status,
+        duration: investment.duration,
+        endDate: investment.endDate,
+        withdrawalRequested: investment.withdrawalRequested
+      })
+
+      if (investment.withdrawalRequested) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Withdrawal already requested for this investment'
+        })
+      }
+
+      const now = new Date()
+      let baseDate = investment.lastUpgradeDate || investment.startDate!
+      const daysPassed = Math.floor((now.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24))
+      
+      const monthlyRate = Number(investment.effectiveROI)
+      const dailyRate = monthlyRate / 30
+      const earnedProfit = (Number(investment.amount) * dailyRate * daysPassed) / 100
+      const accumulatedInterest = Number(investment.accumulatedInterest || 0)
+      const totalProfit = earnedProfit + accumulatedInterest
+      const withdrawnProfits = Number(investment.withdrawnProfits || 0)
+      const availableProfit = totalProfit - withdrawnProfits
+
+      const investmentEndDate = new Date(investment.endDate!)
+      const isInvestmentComplete = now >= investmentEndDate
+
+      console.log('⏰ Investment timeline:', {
+        now: now.toISOString(),
+        endDate: investmentEndDate.toISOString(),
+        isComplete: isInvestmentComplete,
+        daysPassed,
+        durationMonths: investment.duration
+      })
+
+      console.log('💰 Withdrawal calculation:', {
+        investmentAmount: Number(investment.amount),
+        earnedProfit: earnedProfit.toFixed(2),
+        accumulatedInterest: accumulatedInterest.toFixed(2),
+        totalProfit: totalProfit.toFixed(2),
+        withdrawnProfits: withdrawnProfits.toFixed(2),
+        availableProfit: availableProfit.toFixed(2),
+        totalReturn: (Number(investment.amount) + availableProfit).toFixed(2)
+      })
+
+      if (!isInvestmentComplete) {
+        const monthsPassed = daysPassed / 30
+        const MIN_MONTHS_FOR_WITHDRAWAL = investment.duration
+
+        if (monthsPassed < MIN_MONTHS_FOR_WITHDRAWAL) {
+          const monthsRemaining = (MIN_MONTHS_FOR_WITHDRAWAL - monthsPassed).toFixed(1)
+          return reply.code(400).send({
+            success: false,
+            error: `Full withdrawal available after ${MIN_MONTHS_FOR_WITHDRAWAL} months. ${monthsRemaining} months remaining.`
+          })
+        }
+      }
+
+      const totalReturnAmount = Number(investment.amount) + availableProfit
+
+      const withdrawal = await prisma.withdrawalRequest.create({
+        data: {
+          userId,
+          investmentId: id,
+          amount: totalReturnAmount,
+          trc20Address: trc20Address.trim(),
+          status: 'PENDING'
+        }
+      })
+
+      await prisma.investment.update({
+        where: { id },
+        data: {
+          withdrawalRequested: true,
+          status: isInvestmentComplete ? 'COMPLETED' : investment.status
+        }
+      })
+
+      try {
+        const { notifyWithdrawalRequest } = await import('../../bot/telegram-bot')
+      
+        const amountNum = Number(investment.amount)
+        const profitNum = availableProfit
+      
+        await notifyWithdrawalRequest({
+          withdrawalId: withdrawal.id,
+          investmentId: investment.id,
+          userId: userId,
+          userEmail: investment.user.email || 'N/A',
+          planName: investment.plan.name,
+          amount: totalReturnAmount,
+          invested: amountNum,
+          profit: profitNum,
+          trc20Address: trc20Address.trim(),
+          language: investment.language || 'en'
+        })
+      } catch (telegramError) {
+        console.error('⚠️ Failed to send Telegram notification:', telegramError)
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'REQUEST_WITHDRAWAL',
+          resource: 'WITHDRAWAL',
+          details: JSON.stringify({
+            investmentId: id,
+            withdrawalId: withdrawal.id,
+            amount: totalReturnAmount.toString(),
+            investmentAmount: investment.amount.toString(),
+            profit: availableProfit.toFixed(2),
+            trc20Address,
+            planName: investment.plan.name,
+            isComplete: isInvestmentComplete
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      return reply.send({
+        success: true,
+        message: 'Withdrawal request submitted successfully. Admin will review your request shortly.',
+        data: {
+          withdrawalId: withdrawal.id,
+          amount: totalReturnAmount,
+          investmentAmount: Number(investment.amount),
+          profit: availableProfit,
+          trc20Address,
+          status: 'PENDING'
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Withdrawal request error:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to create withdrawal request'
+      })
+    }
+  })
+}

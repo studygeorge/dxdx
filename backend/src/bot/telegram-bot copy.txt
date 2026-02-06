@@ -1,0 +1,2213 @@
+import dotenv from 'dotenv'
+import TelegramBot, { Message, CallbackQuery } from 'node-telegram-bot-api'
+import axios from 'axios'
+import { 
+  detectLanguageFromStart,
+  showLanguageSelection,
+  handleAuthCallback,
+  autoLoginByTelegramId
+} from './telegram-botauthinfo'
+
+import {
+  authSessions,
+  handleLoginCommand,
+  handleAuthMessage
+} from './telegram-botauthinfo'
+
+dotenv.config()
+
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
+const API_BASE_URL = process.env.API_BASE_URL || 'https://dxcapital-ai.com'
+const SUPPORT_USER_ID = process.env.SUPPORT_TELEGRAM_ID!
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || SUPPORT_USER_ID
+
+if (!BOT_TOKEN) {
+  console.error('TELEGRAM_BOT_TOKEN not found in .env')
+  process.exit(1)
+}
+
+if (!SUPPORT_USER_ID) {
+  console.error('SUPPORT_TELEGRAM_ID not found in .env')
+  process.exit(1)
+}
+
+const bot = new TelegramBot(BOT_TOKEN, { polling: true })
+
+interface UserSession {
+  investmentId?: string
+  upgradeId?: string
+  earlyWithdrawalId?: string
+  partialWithdrawalId?: string
+  referralBonusWithdrawalId?: string
+  fullWithdrawalId?: string
+  amount: number
+  planName: string
+  adminWallet?: string
+  userEmail: string
+  senderWallet?: string
+  type: 'investment' | 'upgrade' | 'early_withdrawal' | 'partial_withdrawal' | 'referral_bonus_withdrawal' | 'full_withdrawal'
+  language: string
+}
+
+const userSessions = new Map<number, UserSession>()
+
+const translations = {
+  en: {
+    investmentTitle: '<b>Opening Investment Account</b>',
+    plan: 'Plan',
+    amount: 'Amount',
+    term: 'Term',
+    mainMenu: '<b>Main Menu</b>\n\nSelect an action:',
+    buttonInvest: 'Invest',
+    buttonWithdraw: 'Withdraw',
+    buttonSupport: 'Customer Service',
+    buttonTelegramBot: 'Telegram Bot',
+    buttonWebsite: 'Open Website',
+    months: 'months',
+    baseRate: 'Base rate',
+    perMonth: 'per month',
+    termBonus: '<b>Term Bonus:</b>',
+    baseRateNoBonus: 'Base rate, no bonuses',
+    bonus6months: '+1.5% to rate + $200 cash bonus',
+    bonus12months: '+3% to rate + $500 cash bonus',
+    finalRate: 'Final rate',
+    expectedProfit: '<b>Expected Profit:</b>',
+    interestProfit: 'Interest profit',
+    cashBonus: 'Cash bonus',
+    totalReceive: '<b>Total to receive: $',
+    sendUSDT: '<b>Send USDT (TRC-20) to address:</b>',
+    yourSenderAddress: '<b>Your sender address:</b>',
+    important: '<b>Important:</b>',
+    useOnlyTron: 'Use only TRON network (TRC-20)',
+    sendExactAmount: 'Send exact amount',
+    sendFromAddress: 'Send FROM ADDRESS',
+    cashBonusInfo: 'Cash bonus $ will be paid at the end of the term',
+    afterSendingPress: 'After sending, press the button below',
+    buttonSent: 'I sent the funds',
+    buttonCancel: 'Cancel',
+    buttonConfirm: 'Confirm Withdrawal',
+    buttonLogin: 'Login to Profile',
+    upgradeTitle: '<b>Investment Plan Upgrade</b>',
+    planChange: '<b>Plan Change:</b>',
+    current: 'Current',
+    newPlan: 'New',
+    finances: '<b>Finances:</b>',
+    currentAmount: 'Current amount',
+    topUp: 'Top-up',
+    newAmount: 'New amount',
+    referralBonusTitle: '<b>Referral Bonus Withdrawal</b>',
+    referralInfo: '<b>Referral Information:</b>',
+    referralEmail: 'Referral email',
+    investmentDate: 'Investment date',
+    commission: 'Commission',
+    bonusAmount: 'Bonus amount',
+    trc20Address: '<b>TRC-20 recipient address:</b>',
+    requestDate: '<b>Request date:</b>',
+    pressButtonToConfirm: 'Press the button below to confirm withdrawal',
+    referralBonusRequestSent: 'Your referral bonus withdrawal request has been sent. Admin will process it shortly.',
+    referralBonusNotFound: 'Referral bonus withdrawal request not found or already processed.',
+    referralBonusConfirmed: '<b>Referral bonus withdrawal confirmed!</b>\n\nAmount: $',
+    referralBonusDeclined: '<b>Referral bonus withdrawal declined</b>\n\nAmount: $',
+    investmentNotFound: 'Investment not found or already paid.',
+    upgradeNotFound: 'Upgrade request not found or already processed.',
+    earlyWithdrawalNotFound: 'Early withdrawal request not found or already processed.',
+    partialWithdrawalNotFound: 'Partial withdrawal request not found or already processed.',
+    requestSent: 'Your request has been sent for verification. Please wait for confirmation...',
+    requestCancelled: 'Request cancelled.',
+    upgradeRequestSent: 'Your upgrade request has been sent for verification. Please wait for confirmation...',
+    upgradeCancelled: 'Upgrade request cancelled.',
+    earlyWithdrawalRequestSent: 'Your early withdrawal request has been sent. Admin will process it shortly.',
+    partialWithdrawalRequestSent: 'Your partial withdrawal request has been sent. Admin will process it shortly.',
+    paymentConfirmed: '<b>Payment confirmed!</b>\n\nYour investment account is activated.\nCheck status in your profile on the website.\n\nhttps://dxcapital-ai.com/profile\n\nThank you for your trust!',
+    paymentDeclined: '<b>Payment not confirmed</b>\n\nYour investment request was declined.\n\nPossible reasons:\n- Funds not received in wallet\n- Incorrect transfer amount\n- Wrong network used\n\nIf you believe this is an error, contact support:\n@dxcapai_support',
+    upgradeConfirmed: '<b>Upgrade confirmed!</b>\n\nYour investment plan has been successfully upgraded.\nNew profit rate activated.\n\nCheck status in your profile:\nhttps://dxcapital-ai.com/profile\n\nThank you for your trust!',
+    upgradeDeclined: '<b>Upgrade not confirmed</b>\n\nYour upgrade request was declined.\n\nPossible reasons:\n- Funds not received in wallet\n- Incorrect transfer amount\n- Wrong network used\n\nIf you believe this is an error, contact support:\n@dxcapai_support',
+    welcome: 'Welcome to <b>DXCAPITAL Investment Bot</b>\n\nThis bot is used for:\n • viewing information about your investments\n • viewing available funds for withdrawal\n • viewing referral program and bonuses\n • viewing profile (Telegram version of your personal account on DXCAPITAL platform)\n\nOpen an account on dxcapital-ai.com and log in to the bot to access your account information.\n',
+    openWebsite: 'Open Website',
+    withdrawalTitle: '<b>NEW WITHDRAWAL REQUEST</b>',
+    withdrawalUserInfo: '<b>User Info:</b>',
+    withdrawalDetails: '<b>Withdrawal Details:</b>',
+    invested: 'Invested',
+    profit: 'Profit',
+    withdrawAmount: 'Withdrawal amount',
+    withdrawalConfirmed: '<b>Withdrawal confirmed!</b>\n\nAmount: $',
+    withdrawalDeclined: '<b>Withdrawal declined</b>\n\nAmount: $',
+    earlyWithdrawalTitle: '<b>Early Withdrawal Request</b>',
+    calculation: '<b>Calculation:</b>',
+    daysInvested: 'Days invested',
+    earnedInterest: 'Earned interest',
+    alreadyWithdrawnProfit: 'Already withdrawn profit',
+    penaltyWarning: '<b>EARLY WITHDRAWAL PENALTY:</b>',
+    penaltyDescription: '- All earned interest ($%amount%) will be forfeited\n- Only principal%minus% is returned',
+    minusProfits: ' minus already withdrawn profits',
+    calculationFormula: '<b>Calculation:</b> $%invested% - $%withdrawn% = $%total%',
+    partialWithdrawalTitle: '<b>Partial Profit Withdrawal</b>',
+    profitWithdrawal: 'Profit withdrawal',
+    totalWithdrawnProfits: 'Total withdrawn profits',
+    principalRemains: 'Principal remains invested',
+    partialWithdrawalConfirmed: '<b>Partial withdrawal confirmed!</b>\n\nAmount: $',
+    partialWithdrawalDeclined: '<b>Partial withdrawal declined</b>\n\nAmount: $',
+    supportNewPayment: '<b>NEW PAYMENT FOR VERIFICATION</b>',
+    supportUserInfo: '<b>User Info:</b>',
+    supportInvestmentInfo: '<b>Investment Info:</b>',
+    supportAdminWallet: '<b>Admin wallet:</b>',
+    supportSenderWallet: '<b>Sender wallet:</b>',
+    supportCheckFunds: 'Check if funds received in wallet and approve or decline the request:',
+    buttonApprove: 'Approve',
+    buttonReject: 'Reject',
+    buttonApproveUpgrade: 'Approve Upgrade',
+    buttonSentFunds: 'Sent funds',
+    kycNewSubmission: '<b>NEW KYC SUBMISSION</b>',
+    kycUserInfo: '<b>User Information:</b>',
+    kycDocumentInfo: '<b>Document Information:</b>',
+    kycSubmittedAt: '<b>Submitted at:</b>',
+    kycReviewDocument: 'Review the document and approve or reject:',
+    buttonApproveKYC: 'Approve KYC',
+    buttonRejectKYC: 'Reject KYC',
+    kycApproved: '<b>KYC Verification Approved!</b>\n\nYour identity has been verified.\nYou can now open investment accounts.\n\nVisit: https://dxcapital-ai.com/profile',
+    kycRejected: '<b>KYC Verification Rejected</b>\n\nReason: %reason%\n\nPlease resubmit your documents with correct information.\n\nVisit: https://dxcapital-ai.com/profile',
+    errorLoading: 'Error loading data. Please try later.',
+    errorCancelling: 'Error cancelling.',
+    errorApproving: 'Error approving.',
+    errorRejecting: 'Error rejecting.',
+    accessDenied: 'Access denied',
+    requestNotFound: 'Request not found'
+  },
+  
+  ru: {
+    investmentTitle: '<b>Открытие инвестиционного счёта</b>',
+    plan: 'План',
+    amount: 'Сумма',
+    term: 'Срок',
+    mainMenu: '<b>Главное меню</b>\n\nВыберите действие:',
+    buttonInvest: 'Инвестировать',
+    buttonWithdraw: 'Вывести средства',
+    buttonSupport: 'Служба заботы',
+    buttonTelegramBot: 'Telegram бот',
+    buttonWebsite: 'Перейти на сайт',
+    months: 'месяцев',
+    baseRate: 'Базовая ставка',
+    perMonth: 'в месяц',
+    termBonus: '<b>Бонус за выбранный срок:</b>',
+    baseRateNoBonus: 'Базовая ставка, без бонусов',
+    bonus6months: '+1.5% к ставке + $200 денежный бонус',
+    bonus12months: '+3% к ставке + $500 денежный бонус',
+    finalRate: 'Итоговая ставка',
+    expectedProfit: '<b>Ожидаемый доход:</b>',
+    interestProfit: 'Прибыль от процентов',
+    cashBonus: 'Денежный бонус',
+    totalReceive: '<b>Итого к получению: $',
+    sendUSDT: '<b>Отправьте USDT (TRC-20) на адрес:</b>',
+    yourSenderAddress: '<b>Ваш адрес отправителя:</b>',
+    important: '<b>Важно:</b>',
+    useOnlyTron: 'Используйте только сеть TRON (TRC-20)',
+    sendExactAmount: 'Отправьте точную сумму',
+    sendFromAddress: 'Отправьте С АДРЕСА',
+    cashBonusInfo: 'Денежный бонус $ будет выплачен в конце срока',
+    afterSendingPress: 'После отправки нажмите кнопку ниже',
+    buttonSent: 'Я отправил(а) средства',
+    buttonCancel: 'Отменить',
+    buttonConfirm: 'Подтверждаю вывод',
+    buttonLogin: 'Войти в профиль',
+    upgradeTitle: '<b>Апгрейд инвестиционного плана</b>',
+    planChange: '<b>Изменение плана:</b>',
+    current: 'Текущий',
+    newPlan: 'Новый',
+    finances: '<b>Финансы:</b>',
+    currentAmount: 'Текущая сумма',
+    topUp: 'Пополнение',
+    newAmount: 'Новая сумма',
+    referralBonusTitle: '<b>Вывод реферального бонуса</b>',
+    referralInfo: '<b>Информация о реферале:</b>',
+    referralEmail: 'Email реферала',
+    investmentDate: 'Дата инвестиции',
+    commission: 'Комиссия',
+    bonusAmount: 'Сумма бонуса',
+    trc20Address: '<b>TRC-20 адрес получателя:</b>',
+    requestDate: '<b>Дата заявки:</b>',
+    pressButtonToConfirm: 'Нажмите кнопку ниже для подтверждения вывода',
+    referralBonusRequestSent: 'Ваша заявка на вывод реферального бонуса отправлена. Администратор скоро её обработает.',
+    referralBonusNotFound: 'Заявка на вывод реферального бонуса не найдена или уже обработана.',
+    referralBonusConfirmed: '<b>Вывод реферального бонуса подтверждён!</b>\n\nСумма: $',
+    referralBonusDeclined: '<b>Вывод реферального бонуса отклонён</b>\n\nСумма: $',
+    investmentNotFound: 'Инвестиция не найдена или уже оплачена.',
+    upgradeNotFound: 'Заявка на апгрейд не найдена или уже обработана.',
+    earlyWithdrawalNotFound: 'Заявка на досрочный вывод не найдена или уже обработана.',
+    partialWithdrawalNotFound: 'Заявка на частичный вывод не найдена или уже обработана.',
+    requestSent: 'Ваша заявка отправлена на проверку саппорту. Ожидайте подтверждения...',
+    requestCancelled: 'Заявка отменена.',
+    upgradeRequestSent: 'Ваша заявка на апгрейд отправлена на проверку. Ожидайте подтверждения...',
+    upgradeCancelled: 'Заявка на апгрейд отменена.',
+    earlyWithdrawalRequestSent: 'Ваша заявка на досрочный вывод отправлена. Администратор скоро её обработает.',
+    partialWithdrawalRequestSent: 'Ваша заявка на частичный вывод отправлена. Администратор скоро её обработает.',
+    paymentConfirmed: '<b>Оплата подтверждена!</b>\n\nВаш инвестиционный счёт активирован.\nСледите за статусом в личном кабинете на сайте.\n\nhttps://dxcapital-ai.com/profile\n\nСпасибо за доверие!',
+    paymentDeclined: '<b>Оплата не подтверждена</b>\n\nВаша заявка на инвестицию была отклонена.\n\nВозможные причины:\n- Средства не поступили на кошелёк\n- Неверная сумма перевода\n- Использована неправильная сеть\n\nЕсли вы считаете это ошибкой, свяжитесь с поддержкой:\n@dxcapai_support',
+    upgradeConfirmed: '<b>Апгрейд подтверждён!</b>\n\nВаш инвестиционный план успешно улучшен.\nНовая ставка доходности активирована.\n\nПроверьте статус в личном кабинете:\nhttps://dxcapital-ai.com/profile\n\nСпасибо за доверие!',
+    upgradeDeclined: '<b>Апгрейд не подтверждён</b>\n\nВаша заявка на апгрейд была отклонена.\n\nВозможные причины:\n- Средства не поступили на кошелёк\n- Неверная сумма перевода\n- Использована неправильная сеть\n\nЕсли вы считаете это ошибкой, свяжитесь с поддержкой:\n@dxcapai_support',
+    welcome: 'Добро пожаловать в <b>DXCAPITAL Investment Bot</b>\n\nЭтот бот используется для:\n • просмотра информации по вашим инвестициям\n • просмотра доступных средств к выводу\n • просмотра реферальной программы и бонусов\n • просмотра профиля (телеграм-версия вашего личного кабинета на платформе DXCAPITAL)\n\nОткройте счёт на сайте dxcapital-ai.com и войдите в бот для доступа к информации о вашем счёте.\n',
+    openWebsite: 'Открыть сайт',
+    withdrawalTitle: '<b>НОВАЯ ЗАЯВКА НА ВЫВОД СРЕДСТВ</b>',
+    withdrawalUserInfo: '<b>Информация о пользователе:</b>',
+    withdrawalDetails: '<b>Детали инвестиции:</b>',
+    invested: 'Инвестировано',
+    profit: 'Прибыль',
+    withdrawAmount: 'Сумма к выводу',
+    withdrawalConfirmed: '<b>Вывод средств подтверждён!</b>\n\nСумма: $',
+    withdrawalDeclined: '<b>Вывод средств отклонён</b>\n\nСумма: $',
+    earlyWithdrawalTitle: '<b>Заявка на досрочный вывод</b>',
+    calculation: '<b>Расчет:</b>',
+    daysInvested: 'Дней инвестировано',
+    earnedInterest: 'Начислено процентов',
+    alreadyWithdrawnProfit: 'Уже снято прибыли',
+    penaltyWarning: '<b>ДОСРОЧНЫЙ ВЫВОД - ШТРАФ:</b>',
+    penaltyDescription: '- Все начисленные проценты ($%amount%) будут утеряны\n- Возвращается только тело инвестиции%minus%',
+    minusProfits: ' минус уже снятые проценты',
+    calculationFormula: '<b>Расчет:</b> $%invested% - $%withdrawn% = $%total%',
+    partialWithdrawalTitle: '<b>Частичный вывод прибыли</b>',
+    profitWithdrawal: 'Вывод прибыли',
+    totalWithdrawnProfits: 'Всего снято прибыли',
+    principalRemains: 'Основная сумма остается в инвестиции',
+    partialWithdrawalConfirmed: '<b>Частичный вывод подтверждён!</b>\n\nСумма: $',
+    partialWithdrawalDeclined: '<b>Частичный вывод отклонён</b>\n\nСумма: $',
+    supportNewPayment: '<b>НОВАЯ ОПЛАТА НА ПРОВЕРКУ</b>',
+    supportUserInfo: '<b>Информация о пользователе:</b>',
+    supportInvestmentInfo: '<b>Информация об инвестиции:</b>',
+    supportAdminWallet: '<b>Кошелёк админа:</b>',
+    supportSenderWallet: '<b>Кошелёк отправителя:</b>',
+    supportCheckFunds: 'Проверьте поступление средств на кошелёк и подтвердите или отклоните заявку:',
+    buttonApprove: 'Подтвердить',
+    buttonReject: 'Отклонить',
+    buttonApproveUpgrade: 'Подтвердить апгрейд',
+    buttonSentFunds: 'Отправил средства',
+    kycNewSubmission: '<b>НОВАЯ ЗАЯВКА НА KYC ВЕРИФИКАЦИЮ</b>',
+    kycUserInfo: '<b>Информация о пользователе:</b>',
+    kycDocumentInfo: '<b>Информация о документе:</b>',
+    kycSubmittedAt: '<b>Дата подачи:</b>',
+    kycReviewDocument: 'Проверьте документ и одобрите или отклоните:',
+    buttonApproveKYC: 'Одобрить KYC',
+    buttonRejectKYC: 'Отклонить KYC',
+    kycApproved: '<b>KYC верификация одобрена!</b>\n\nВаша личность подтверждена.\nТеперь вы можете открывать инвестиционные счета.\n\nПерейти: https://dxcapital-ai.com/profile',
+    kycRejected: '<b>KYC верификация отклонена</b>\n\nПричина: %reason%\n\nПожалуйста, отправьте документы повторно с корректной информацией.\n\nПерейти: https://dxcapital-ai.com/profile',
+    errorLoading: 'Ошибка загрузки данных. Попробуйте позже.',
+    errorCancelling: 'Ошибка отмены.',
+    errorApproving: 'Ошибка подтверждения.',
+    errorRejecting: 'Ошибка отклонения.',
+    accessDenied: 'Доступ запрещён',
+    requestNotFound: 'Заявка не найдена'
+  }
+}
+
+function t(lang: string, key: keyof typeof translations.en): string {
+  const language = (lang === 'ru' || lang === 'en') ? lang : 'en'
+  return translations[language][key] || translations.en[key]
+}
+
+async function showWelcomeAfterLanguageSelection(chatId: number, language: 'en' | 'ru') {
+  console.log(`Showing welcome message for chat ${chatId} in language ${language}`)
+  
+  let session = userSessions.get(chatId)
+  if (!session) {
+    session = {
+      amount: 0,
+      planName: '',
+      userEmail: '',
+      type: 'investment',
+      language: language
+    }
+    userSessions.set(chatId, session)
+  } else {
+    session.language = language
+    userSessions.set(chatId, session)
+  }
+  
+  const welcomeMessage = t(language, 'welcome')
+  
+  await bot.sendMessage(chatId, welcomeMessage, {
+    parse_mode: 'HTML',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: t(language, 'buttonLogin'), callback_data: 'auth_login' }],
+        [{ text: t(language, 'buttonWebsite'), url: 'https://dxcapital-ai.com' }],
+        [{ text: t(language, 'buttonSupport'), url: 'https://t.me/DXCapital1' }]
+      ]
+    }
+  })
+}
+
+console.log('Telegram bot starting...')
+console.log('Support User ID:', SUPPORT_USER_ID)
+console.log('API Base URL:', API_BASE_URL)
+
+bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
+  const chatId = msg.chat.id
+  const startParam = match?.[1] || ''
+
+  console.log('User started bot:', chatId, 'Param:', startParam)
+
+  const detectedLanguage = detectLanguageFromStart(startParam)
+  console.log('Detected language:', detectedLanguage, 'from param:', startParam)
+
+  if (detectedLanguage === null && !startParam.startsWith('invest_') && !startParam.startsWith('upgrade_') && !startParam.startsWith('early_') && !startParam.startsWith('partial_') && !startParam.startsWith('referral_bonus_')) {
+    showLanguageSelection(bot, chatId)
+    return
+  }
+
+  const finalLanguage: 'en' | 'ru' = detectedLanguage || 'ru'
+
+  if (startParam === 'login' || startParam.includes('profile')) {
+    await handleLoginCommand(bot, chatId, chatId.toString(), finalLanguage)
+    return
+  }
+
+  if (startParam.startsWith('invest_')) {
+    const investmentId = startParam.replace('invest_', '')
+
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/v1/telegram/investment/${investmentId}`
+      )
+
+      const data = response.data.data
+
+      if (!data) {
+        bot.sendMessage(chatId, t(data.language || 'en', 'investmentNotFound'))
+        return
+      }
+
+      const lang = data.language || 'en'
+
+      userSessions.set(chatId, {
+        investmentId: investmentId,
+        amount: data.amount,
+        planName: data.planName,
+        adminWallet: data.adminWallet,
+        userEmail: data.userEmail,
+        senderWallet: data.senderWallet,
+        type: 'investment',
+        language: lang
+      })
+
+      const showBonus = data.amount >= 500
+
+      const durationBonusText = !showBonus
+        ? t(lang, 'baseRateNoBonus')
+        : data.duration === 6
+        ? t(lang, 'bonus6months')
+        : data.duration === 12
+        ? t(lang, 'bonus12months')
+        : t(lang, 'baseRateNoBonus')
+
+      const baseROI = data.roi || 0
+      const durationBonus = showBonus ? (data.durationBonus || 0) : 0
+      const effectiveROI = baseROI + durationBonus
+      const bonusAmount = showBonus ? (data.bonusAmount || 0) : 0
+
+      const message = `
+${t(lang, 'investmentTitle')}
+
+${t(lang, 'plan')}: ${data.planName}
+${t(lang, 'amount')}: ${data.amount} USDT (TRC-20)
+${t(lang, 'term')}: ${data.duration} ${t(lang, 'months')}
+${t(lang, 'baseRate')}: ${baseROI}% ${t(lang, 'perMonth')}
+
+${showBonus ? `${t(lang, 'termBonus')}\n${durationBonusText}` : ''}
+${t(lang, 'finalRate')}: ${effectiveROI}% ${t(lang, 'perMonth')}
+
+${t(lang, 'expectedProfit')}
+${t(lang, 'interestProfit')}: $${data.expectedReturn}
+${bonusAmount > 0 ? `${t(lang, 'cashBonus')}: $${bonusAmount}` : ''}
+${t(lang, 'totalReceive')}${data.totalReturn}</b>
+
+${t(lang, 'sendUSDT')}
+
+<code>${data.adminWallet}</code>
+
+${t(lang, 'yourSenderAddress')}
+<code>${data.senderWallet}</code>
+
+${t(lang, 'important')}
+${t(lang, 'useOnlyTron')}
+${t(lang, 'sendExactAmount')}: ${data.amount} USDT
+${t(lang, 'sendFromAddress')}: ${data.senderWallet}
+${bonusAmount > 0 ? t(lang, 'cashBonusInfo').replace('$', `$${bonusAmount}`) : ''}
+${t(lang, 'afterSendingPress')}
+      `.trim()
+
+      bot.sendMessage(chatId, message, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: t(lang, 'buttonSent'), callback_data: `confirm_${investmentId}` }],
+            [{ text: t(lang, 'buttonCancel'), callback_data: `cancel_${investmentId}` }]
+          ]
+        }
+      })
+
+    } catch (error: any) {
+      console.error('Error fetching investment:', error.message)
+      bot.sendMessage(chatId, t('en', 'errorLoading'))
+    }
+    return
+  }
+
+  if (startParam.startsWith('upgrade_')) {
+    const upgradeId = startParam.replace('upgrade_', '')
+
+    try {
+      console.log('Fetching upgrade data:', upgradeId)
+
+      const response = await axios.get(
+        `${API_BASE_URL}/api/v1/telegram/upgrade/${upgradeId}`
+      )
+
+      const data = response.data.data
+
+      if (!data) {
+        bot.sendMessage(chatId, t(data.language || 'en', 'upgradeNotFound'))
+        return
+      }
+
+      const lang = data.language || 'en'
+
+      userSessions.set(chatId, {
+        upgradeId: upgradeId,
+        investmentId: data.investmentId,
+        amount: data.additionalAmount,
+        planName: data.newPackage,
+        adminWallet: data.adminWallet,
+        userEmail: data.userEmail,
+        senderWallet: data.senderWallet,
+        type: 'upgrade',
+        language: lang
+      })
+
+      const message = `
+${t(lang, 'upgradeTitle')}
+
+${t(lang, 'planChange')}
+${t(lang, 'current')}: ${data.oldPackage} (${data.oldAPY}%)
+${t(lang, 'newPlan')}: <b>${data.newPackage} (${data.newAPY}%)</b>
+
+${t(lang, 'finances')}
+${t(lang, 'currentAmount')}: $${data.oldAmount}
+${t(lang, 'topUp')}: <b>+$${data.additionalAmount} USDT</b>
+${t(lang, 'newAmount')}: <b>$${data.totalAmount}</b>
+
+${t(lang, 'sendUSDT')}
+
+<code>${data.adminWallet}</code>
+
+${t(lang, 'yourSenderAddress')}
+<code>${data.senderWallet}</code>
+
+${t(lang, 'important')}
+${t(lang, 'useOnlyTron')}
+${t(lang, 'sendExactAmount')}: <b>${data.additionalAmount} USDT</b>
+${t(lang, 'sendFromAddress')}: ${data.senderWallet}
+${t(lang, 'afterSendingPress')}
+      `.trim()
+
+      bot.sendMessage(chatId, message, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: t(lang, 'buttonSent'), callback_data: `confirm_upgrade_${upgradeId}` }],
+            [{ text: t(lang, 'buttonCancel'), callback_data: `cancel_upgrade_${upgradeId}` }]
+          ]
+        }
+      })
+
+    } catch (error: any) {
+      console.error('Error fetching upgrade:', error.message)
+      bot.sendMessage(chatId, t('en', 'errorLoading'))
+    }
+    return
+  }
+
+  if (startParam.startsWith('early_')) {
+    const withdrawalId = startParam.replace('early_', '')
+
+    try {
+      console.log('Fetching early withdrawal data:', withdrawalId)
+
+      const response = await axios.get(
+        `${API_BASE_URL}/api/v1/telegram/early-withdrawal/${withdrawalId}`
+      )
+
+      const data = response.data.data
+
+      if (!data) {
+        bot.sendMessage(chatId, t('ru', 'earlyWithdrawalNotFound'))
+        return
+      }
+
+      const lang = data.language || 'ru'
+
+      userSessions.set(chatId, {
+        earlyWithdrawalId: withdrawalId,
+        investmentId: data.investmentId,
+        amount: data.totalAmount,
+        planName: data.planName,
+        userEmail: data.userEmail,
+        type: 'early_withdrawal',
+        language: lang
+      })
+
+      const penaltyText = t(lang, 'penaltyDescription')
+        .replace('%amount%', data.earnedInterest.toFixed(2))
+        .replace('%minus%', data.withdrawnProfits > 0 ? t(lang, 'minusProfits') : '')
+      
+      const calcFormula = data.withdrawnProfits > 0 
+        ? t(lang, 'calculationFormula')
+            .replace('%invested%', data.investmentAmount.toFixed(2))
+            .replace('%withdrawn%', data.withdrawnProfits.toFixed(2))
+            .replace('%total%', data.totalAmount.toFixed(2))
+        : ''
+
+      const message = `
+${t(lang, 'earlyWithdrawalTitle')}
+
+${t(lang, 'plan')}: <b>${data.planName}</b>
+${t(lang, 'invested')}: $${data.investmentAmount.toFixed(2)}
+
+${t(lang, 'calculation')}
+${t(lang, 'daysInvested')}: ${data.daysInvested} / 30
+${data.withdrawnProfits > 0 ? `${t(lang, 'alreadyWithdrawnProfit')}: $${data.withdrawnProfits.toFixed(2)}` : ''}
+<b>${t(lang, 'withdrawAmount')}: $${data.totalAmount.toFixed(2)}</b>
+
+${t(lang, 'trc20Address')}
+<code>${data.trc20Address}</code>
+
+${t(lang, 'penaltyWarning')}
+${penaltyText}
+
+${calcFormula}
+
+${t(lang, 'pressButtonToConfirm')}
+      `.trim()
+
+      bot.sendMessage(chatId, message, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: t(lang, 'buttonConfirm'), callback_data: `confirm_early_${withdrawalId}` }],
+            [{ text: t(lang, 'buttonCancel'), callback_data: `cancel_early_${withdrawalId}` }]
+          ]
+        }
+      })
+
+    } catch (error: any) {
+      console.error('Error fetching early withdrawal:', error.message)
+      bot.sendMessage(chatId, t('ru', 'errorLoading'))
+    }
+    return
+  }
+
+  if (startParam.startsWith('partial_')) {
+    const withdrawalId = startParam.replace('partial_', '')
+
+    try {
+      console.log('Fetching partial withdrawal data:', withdrawalId)
+
+      const response = await axios.get(
+        `${API_BASE_URL}/api/v1/telegram/partial-withdrawal/${withdrawalId}`
+      )
+
+      const data = response.data.data
+
+      if (!data) {
+        bot.sendMessage(chatId, t('ru', 'partialWithdrawalNotFound'))
+        return
+      }
+
+      const lang = data.language || 'ru'
+
+      userSessions.set(chatId, {
+        partialWithdrawalId: withdrawalId,
+        investmentId: data.investmentId,
+        amount: data.amount,
+        planName: data.planName,
+        userEmail: data.userEmail,
+        type: 'partial_withdrawal',
+        language: lang
+      })
+
+      const message = `
+${t(lang, 'partialWithdrawalTitle')}
+
+${t(lang, 'plan')}: <b>${data.planName}</b>
+${t(lang, 'invested')}: $${data.investmentAmount.toFixed(2)}
+
+${t(lang, 'calculation')}
+<b>${t(lang, 'profitWithdrawal')}: $${data.amount.toFixed(2)}</b>
+${t(lang, 'totalWithdrawnProfits')}: $${data.totalWithdrawn.toFixed(2)}
+
+${t(lang, 'trc20Address')}
+<code>${data.trc20Address}</code>
+
+${t(lang, 'principalRemains')}
+
+${t(lang, 'pressButtonToConfirm')}
+      `.trim()
+
+      bot.sendMessage(chatId, message, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: t(lang, 'buttonConfirm'), callback_data: `confirm_partial_${withdrawalId}` }],
+            [{ text: t(lang, 'buttonCancel'), callback_data: `cancel_partial_${withdrawalId}` }]
+          ]
+        }
+      })
+
+    } catch (error: any) {
+      console.error('Error fetching partial withdrawal:', error.message)
+      bot.sendMessage(chatId, t('ru', 'errorLoading'))
+    }
+    return
+  }
+
+  if (startParam.startsWith('referral_bonus_')) {
+    const withdrawalId = startParam.replace('referral_bonus_', '')
+
+    try {
+      console.log('Fetching referral bonus withdrawal data:', withdrawalId)
+
+      const response = await axios.get(
+        `${API_BASE_URL}/api/v1/telegram/referral-bonus-withdrawal/${withdrawalId}`
+      )
+
+      const data = response.data.data
+
+      if (!data) {
+        bot.sendMessage(chatId, t('ru', 'referralBonusNotFound'))
+        return
+      }
+
+      const lang = data.language || 'ru'
+
+      userSessions.set(chatId, {
+        referralBonusWithdrawalId: withdrawalId,
+        amount: data.amount,
+        planName: '',
+        userEmail: data.userEmail,
+        type: 'referral_bonus_withdrawal',
+        language: lang
+      })
+
+      const message = `
+${t(lang, 'referralBonusTitle')}
+
+${t(lang, 'referralInfo')}
+${t(lang, 'referralEmail')}: <b>${data.referralEmail}</b>
+${t(lang, 'investmentDate')}: ${new Date(data.investmentDate).toLocaleDateString('ru-RU')}
+${t(lang, 'commission')}: ${data.commissionRate}%
+
+<b>${t(lang, 'bonusAmount')}: $${data.amount.toFixed(2)}</b>
+
+${t(lang, 'trc20Address')}
+<code>${data.trc20Address}</code>
+
+${t(lang, 'pressButtonToConfirm')}
+      `.trim()
+
+      bot.sendMessage(chatId, message, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: t(lang, 'buttonConfirm'), callback_data: `confirm_referral_bonus_${withdrawalId}` }],
+            [{ text: t(lang, 'buttonCancel'), callback_data: `cancel_referral_bonus_${withdrawalId}` }]
+          ]
+        }
+      })
+
+    } catch (error: any) {
+      console.error('Error fetching referral bonus withdrawal:', error.message)
+      bot.sendMessage(chatId, t('ru', 'errorLoading'))
+    }
+    return
+  }
+
+  try {
+    const token = process.env.API_TOKEN
+    if (!token) {
+      console.error('API_TOKEN is not configured')
+      await bot.sendMessage(chatId, 'Server configuration error. Please contact support.')
+      return
+    }
+
+    const response = await fetch('https://dxcapital-ai.com/api/telegram/check-link', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ chatId: chatId.toString() })
+    })
+
+    if (!response.ok) {
+      console.error('API response error:', response.status, response.statusText)
+      await bot.sendMessage(chatId, 'Service temporarily unavailable. Please try again later.')
+      return
+    }
+
+    const data: any = await response.json()
+    console.log('Auth check response:', data)
+
+    if (!data.isLinked) {
+      console.log('User not authorized, showing auth buttons')
+      
+      let session = userSessions.get(chatId)
+      if (!session) {
+        session = {
+          amount: 0,
+          planName: '',
+          userEmail: '',
+          type: 'investment',
+          language: finalLanguage
+        }
+        userSessions.set(chatId, session)
+      } else {
+        session.language = finalLanguage
+        userSessions.set(chatId, session)
+      }
+
+      const welcomeMessage = t(finalLanguage, 'welcome')
+      
+      await bot.sendMessage(chatId, welcomeMessage, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: t(finalLanguage, 'buttonLogin'), callback_data: 'auth_login' }],
+            [{ text: t(finalLanguage, 'buttonWebsite'), url: 'https://dxcapital-ai.com' }],
+            [{ text: t(finalLanguage, 'buttonTelegramBot'), url: 'https://t.me/dxcapai' }],
+            [{ text: t(finalLanguage, 'buttonSupport'), url: 'https://t.me/dxcapital_support' }]
+          ]
+        }
+      })
+      return
+    }
+
+    console.log('User authorized, email:', data.userEmail)
+    
+    let session = userSessions.get(chatId)
+    if (!session) {
+      session = {
+        amount: 0,
+        planName: '',
+        userEmail: data.userEmail || '',
+        type: 'investment',
+        language: finalLanguage
+      }
+      userSessions.set(chatId, session)
+    } else {
+      session.userEmail = data.userEmail || session.userEmail
+      session.language = finalLanguage
+      userSessions.set(chatId, session)
+    }
+
+    await bot.sendMessage(
+      chatId,
+      t(finalLanguage, 'mainMenu'),
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: t(finalLanguage, 'buttonInvest'), callback_data: 'invest' },
+              { text: t(finalLanguage, 'buttonWithdraw'), callback_data: 'withdraw' }
+            ],
+            [
+              { text: t(finalLanguage, 'buttonSupport'), url: 'https://t.me/dxcapitalsupport' }
+            ]
+          ]
+        }
+      }
+    )
+
+  } catch (error) {
+    console.error('Error in /start handler:', error)
+    await bot.sendMessage(
+      chatId,
+      'An error occurred. Please try again or contact support @dxcapitalsupport'
+    )
+  }
+})
+
+bot.on('message', async (msg: Message) => {
+  if (!msg.text || msg.text.startsWith('/')) return
+
+  const chatId = msg.chat.id
+  const session = authSessions.get(chatId)
+})
+
+bot.on('callback_query', async (query: CallbackQuery) => {
+  if (!query.message || !query.data) return
+
+  const chatId = query.message.chat.id
+  const messageId = query.message.message_id
+  const data = query.data
+
+  console.log('Callback query:', data, 'from user:', chatId)
+
+  if (data === 'set_lang_en' || data === 'set_lang_ru') {
+    const selectedLanguage = await handleAuthCallback(bot, query)
+    
+    if (selectedLanguage) {
+      console.log(`Language selected: ${selectedLanguage}, showing welcome message`)
+      await showWelcomeAfterLanguageSelection(chatId, selectedLanguage)
+    }
+    return
+  }
+
+  // ИСПРАВЛЕНИЕ: добавлена обработка auth_login
+  if (data === 'auth_login') {
+    console.log(`Processing auth_login for user: ${chatId}`)
+    const session = userSessions.get(chatId)
+    const userLanguage = session?.language || 'ru'
+    
+    // Вызываем автологин по Telegram ID
+    await autoLoginByTelegramId(bot, chatId, chatId.toString(), userLanguage as 'en' | 'ru')
+    bot.answerCallbackQuery(query.id).catch(() => {})
+    return
+  }
+
+  if (data.startsWith('auth_')) {
+    await handleAuthCallback(bot, query)
+    return
+  }
+
+  const session = userSessions.get(chatId)
+  const lang = session?.language || 'en'
+
+  if (data.startsWith('confirm_') && !data.includes('upgrade') && !data.includes('early') && !data.includes('partial') && !data.includes('referral_bonus')) {
+    const investmentId = data.replace('confirm_', '')
+
+    bot.editMessageReplyMarkup(
+      { inline_keyboard: [] },
+      { chat_id: chatId, message_id: messageId }
+    ).catch(() => {})
+
+    bot.sendMessage(chatId, t(lang, 'requestSent'))
+
+    const supportMessage = `
+${t('ru', 'supportNewPayment')}
+
+${t('ru', 'supportUserInfo')}
+Telegram ID: <code>${chatId}</code>
+Email: <code>${session?.userEmail || 'N/A'}</code>
+
+${t('ru', 'supportInvestmentInfo')}
+Investment ID: <code>${investmentId}</code>
+План: ${session?.planName || 'N/A'}
+Сумма: <b>${session?.amount || 'N/A'} USDT (TRC-20)</b>
+
+${t('ru', 'supportAdminWallet')}
+<code>${session?.adminWallet || 'N/A'}</code>
+
+${t('ru', 'supportSenderWallet')}
+<code>${session?.senderWallet || 'N/A'}</code>
+
+${t('ru', 'supportCheckFunds')}
+    `.trim()
+
+    try {
+      await bot.sendMessage(SUPPORT_USER_ID, supportMessage, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: t('ru', 'buttonApprove'), callback_data: `approve_${investmentId}_${chatId}` },
+              { text: t('ru', 'buttonReject'), callback_data: `reject_${investmentId}_${chatId}` }
+            ]
+          ]
+        }
+      })
+
+      console.log('Support notified for investment:', investmentId)
+    } catch (error: any) {
+      console.error('Error notifying support:', error.message)
+    }
+  }
+
+  else if (data.startsWith('confirm_upgrade_')) {
+    const upgradeId = data.replace('confirm_upgrade_', '')
+
+    bot.editMessageReplyMarkup(
+      { inline_keyboard: [] },
+      { chat_id: chatId, message_id: messageId }
+    ).catch(() => {})
+
+    bot.sendMessage(chatId, t(lang, 'upgradeRequestSent'))
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/v1/telegram/upgrade/${upgradeId}`)
+      const upgradeData = response.data.data
+
+      const supportMessage = `
+<b>НОВАЯ ЗАЯВКА НА АПГРЕЙД</b>
+
+<b>Информация о пользователе:</b>
+Telegram ID: <code>${chatId}</code>
+User ID: <code>${upgradeData.userId}</code>
+Email: <code>${upgradeData.userEmail}</code>
+
+<b>Детали апгрейда:</b>
+Investment ID: <code>${upgradeData.investmentId}</code>
+Upgrade ID: <code>${upgradeId}</code>
+
+<b>Изменения:</b>
+План: ${upgradeData.oldPackage} → <b>${upgradeData.newPackage}</b>
+APY: ${upgradeData.oldAPY}% → <b>${upgradeData.newAPY}%</b>
+Текущая сумма: $${upgradeData.oldAmount}
+Пополнение: <b>+$${upgradeData.additionalAmount}</b>
+Новая сумма: <b>$${upgradeData.totalAmount}</b>
+
+<b>Кошелёк админа:</b>
+<code>${upgradeData.adminWallet}</code>
+
+<b>Кошелёк отправителя:</b>
+<code>${upgradeData.senderWallet}</code>
+
+<b>Дата заявки:</b> ${new Date().toLocaleString('ru-RU')}
+
+Проверьте поступление средств (${upgradeData.additionalAmount} USDT) и подтвердите апгрейд:
+      `.trim()
+
+      await bot.sendMessage(SUPPORT_USER_ID, supportMessage, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: t('ru', 'buttonApproveUpgrade'), callback_data: `approve_upgrade_${upgradeId}_${chatId}` },
+              { text: t('ru', 'buttonReject'), callback_data: `reject_upgrade_${upgradeId}_${chatId}` }
+            ]
+          ]
+        }
+      })
+
+      console.log('Support notified for upgrade:', upgradeId)
+    } catch (error: any) {
+      console.error('Error notifying support about upgrade:', error.message)
+    }
+  }
+
+  else if (data.startsWith('confirm_early_')) {
+    const withdrawalId = data.replace('confirm_early_', '')
+
+    bot.editMessageReplyMarkup(
+      { inline_keyboard: [] },
+      { chat_id: chatId, message_id: messageId }
+    ).catch(() => {})
+
+    bot.sendMessage(chatId, t(lang, 'earlyWithdrawalRequestSent'))
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/v1/telegram/early-withdrawal/${withdrawalId}`)
+      const withdrawalData = response.data.data
+
+      const supportMessage = `
+<b>НОВАЯ ЗАЯВКА НА ДОСРОЧНЫЙ ВЫВОД</b>
+
+<b>Информация о пользователе:</b>
+Telegram ID: <code>${chatId}</code>
+User ID: <code>${withdrawalData.userId}</code>
+Email: <code>${withdrawalData.userEmail}</code>
+
+<b>Детали вывода:</b>
+Investment ID: <code>${withdrawalData.investmentId}</code>
+Early Withdrawal ID: <code>${withdrawalId}</code>
+План: <b>${withdrawalData.planName}</b>
+
+<b>Расчет:</b>
+Инвестировано: $${withdrawalData.investmentAmount.toFixed(2)}
+Дней инвестировано: ${withdrawalData.daysInvested} / 30
+${withdrawalData.withdrawnProfits > 0 ? `Уже снято прибыли: $${withdrawalData.withdrawnProfits.toFixed(2)}` : ''}
+<b>Сумма к выводу: $${withdrawalData.totalAmount.toFixed(2)}</b>
+
+<b>TRC-20 адрес:</b>
+<code>${withdrawalData.trc20Address}</code>
+
+<b>Дата заявки:</b> ${new Date().toLocaleString('ru-RU')}
+
+${withdrawalData.withdrawnProfits > 0 ? `<b>Расчет:</b> $${withdrawalData.investmentAmount.toFixed(2)} - $${withdrawalData.withdrawnProfits.toFixed(2)} = $${withdrawalData.totalAmount.toFixed(2)}` : ''}
+
+Подтвердите досрочный вывод средств:
+      `.trim()
+
+      await bot.sendMessage(SUPPORT_USER_ID, supportMessage, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'Отправил средства', callback_data: `approve_early_withdrawal_${withdrawalId}` },
+              { text: 'Отклонить', callback_data: `reject_early_withdrawal_${withdrawalId}` }
+            ]
+          ]
+        }
+      })
+
+      console.log('Support notified for early withdrawal:', withdrawalId)
+    } catch (error: any) {
+      console.error('Error notifying support about early withdrawal:', error.message)
+    }
+  }
+
+  else if (data.startsWith('confirm_partial_')) {
+    const withdrawalId = data.replace('confirm_partial_', '')
+
+    bot.editMessageReplyMarkup(
+      { inline_keyboard: [] },
+      { chat_id: chatId, message_id: messageId }
+    ).catch(() => {})
+
+    bot.sendMessage(chatId, t(lang, 'partialWithdrawalRequestSent'))
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/v1/telegram/partial-withdrawal/${withdrawalId}`)
+      const withdrawalData = response.data.data
+
+      const supportMessage = `
+<b>НОВАЯ ЗАЯВКА НА ЧАСТИЧНЫЙ ВЫВОД ПРИБЫЛИ</b>
+
+<b>Информация о пользователе:</b>
+Telegram ID: <code>${chatId}</code>
+User ID: <code>${withdrawalData.userId}</code>
+Email: <code>${withdrawalData.userEmail}</code>
+
+<b>Детали вывода:</b>
+Investment ID: <code>${withdrawalData.investmentId}</code>
+Partial Withdrawal ID: <code>${withdrawalId}</code>
+План: <b>${withdrawalData.planName}</b>
+Инвестировано: $${withdrawalData.investmentAmount.toFixed(2)}
+
+<b>Расчет:</b>
+<b>Вывод прибыли: $${withdrawalData.amount.toFixed(2)}</b>
+Всего снято прибыли: $${withdrawalData.totalWithdrawn.toFixed(2)}
+
+<b>TRC-20 адрес:</b>
+<code>${withdrawalData.trc20Address}</code>
+
+<b>Дата заявки:</b> ${new Date().toLocaleString('ru-RU')}
+
+<b>Основная сумма остается в инвестиции</b>
+
+Подтвердите частичный вывод прибыли:
+      `.trim()
+
+      await bot.sendMessage(SUPPORT_USER_ID, supportMessage, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'Отправил средства', callback_data: `approve_partial_withdrawal_${withdrawalId}` },
+              { text: 'Отклонить', callback_data: `reject_partial_withdrawal_${withdrawalId}` }
+            ]
+          ]
+        }
+      })
+
+      console.log('Support notified for partial withdrawal:', withdrawalId)
+    } catch (error: any) {
+      console.error('Error notifying support about partial withdrawal:', error.message)
+    }
+  }
+
+  else if (data.startsWith('confirm_referral_bonus_')) {
+    const withdrawalId = data.replace('confirm_referral_bonus_', '')
+
+    bot.editMessageReplyMarkup(
+      { inline_keyboard: [] },
+      { chat_id: chatId, message_id: messageId }
+    ).catch(() => {})
+
+    bot.sendMessage(chatId, t(lang, 'referralBonusRequestSent'))
+
+    console.log('User confirmed referral bonus withdrawal:', withdrawalId)
+  }
+
+  else if (data.startsWith('rba_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const shortId = data.replace('rba_', '')
+
+    try {
+      console.log('Referral bonus approval clicked, short ID:', shortId)
+
+      const getResponse = await axios.get(
+        `${API_BASE_URL}/api/v1/telegram/referral-bonus-withdrawal/${shortId}`
+      )
+
+      const withdrawalData = getResponse.data
+
+      if (!withdrawalData || !withdrawalData.id) {
+        bot.answerCallbackQuery(query.id, { 
+          text: 'Заявка не найдена или уже обработана' 
+        }).catch(() => {})
+        return
+      }
+
+      console.log('Found full withdrawal ID:', withdrawalData.id)
+
+      await axios.post(
+        `${API_BASE_URL}/api/v1/referrals/withdraw-bonus/${withdrawalData.id}/approve`,
+        {},
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.answerCallbackQuery(query.id, {
+        text: 'Вывод реферального бонуса одобрен',
+      })
+
+      bot.sendMessage(
+        chatId,
+        `Вывод реферального бонуса одобрен!\n\nСумма: ${withdrawalData.amount.toFixed(2)} USDT\nАдрес: \`${withdrawalData.trc20Address}\`\nRequest ID: \`${withdrawalData.id}\``,
+        { parse_mode: 'Markdown' }
+      )
+
+      console.log('Referral bonus withdrawal approved:', withdrawalData.id)
+    } catch (error: any) {
+      console.error('Error approving referral bonus withdrawal:', error)
+      bot.answerCallbackQuery(query.id, {
+        text: 'Ошибка при одобрении вывода',
+      })
+      
+      if (axios.isAxiosError(error)) {
+        console.error('API Error:', error.response?.status, error.response?.data)
+        bot.sendMessage(
+          chatId,
+          `Ошибка: ${error.response?.status} - ${JSON.stringify(error.response?.data)}`
+        )
+      }
+    }
+  }
+
+  else if (data.startsWith('rbr_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const shortId = data.replace('rbr_', '')
+
+    try {
+      console.log('Referral bonus rejection clicked, short ID:', shortId)
+
+      const getResponse = await axios.get(
+        `${API_BASE_URL}/api/v1/telegram/referral-bonus-withdrawal/${shortId}`
+      )
+
+      const withdrawalData = getResponse.data
+
+      if (!withdrawalData || !withdrawalData.id) {
+        bot.answerCallbackQuery(query.id, { 
+          text: 'Заявка не найдена или уже обработана' 
+        }).catch(() => {})
+        return
+      }
+
+      console.log('Found full withdrawal ID:', withdrawalData.id)
+
+      await axios.post(
+        `${API_BASE_URL}/api/v1/referrals/withdraw-bonus/${withdrawalData.id}/reject`,
+        { reason: 'Отклонено администратором' },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.answerCallbackQuery(query.id, {
+        text: 'Вывод реферального бонуса отклонен',
+      })
+
+      bot.sendMessage(
+        chatId,
+        `Вывод реферального бонуса отклонен\n\nСумма: ${withdrawalData.amount.toFixed(2)} USDT\nRequest ID: \`${withdrawalData.id}\``,
+        { parse_mode: 'Markdown' }
+      )
+
+      console.log('Referral bonus withdrawal rejected:', withdrawalData.id)
+    } catch (error: any) {
+      console.error('Error rejecting referral bonus withdrawal:', error)
+      bot.answerCallbackQuery(query.id, {
+        text: 'Ошибка при отклонении вывода',
+      })
+      
+      if (axios.isAxiosError(error)) {
+        console.error('API Error:', error.response?.status, error.response?.data)
+        bot.sendMessage(
+          chatId,
+          `Ошибка: ${error.response?.status} - ${JSON.stringify(error.response?.data)}`
+        )
+      }
+    }
+  }
+
+  else if (data.startsWith('cancel_') && !data.includes('upgrade') && !data.includes('early') && !data.includes('partial') && !data.includes('referral_bonus')) {
+    const investmentId = data.replace('cancel_', '')
+
+    try {
+      await axios.delete(`${API_BASE_URL}/api/v1/telegram/investment/${investmentId}`)
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.sendMessage(chatId, t(lang, 'requestCancelled'))
+      userSessions.delete(chatId)
+    } catch (error: any) {
+      console.error('Error cancelling investment:', error.message)
+      bot.sendMessage(chatId, t(lang, 'errorCancelling'))
+    }
+  }
+
+  else if (data.startsWith('cancel_upgrade_')) {
+    const upgradeId = data.replace('cancel_upgrade_', '')
+
+    bot.editMessageReplyMarkup(
+      { inline_keyboard: [] },
+      { chat_id: chatId, message_id: messageId }
+    ).catch(() => {})
+
+    bot.sendMessage(chatId, t(lang, 'requestCancelled'))
+    userSessions.delete(chatId)
+  }
+
+  else if (data.startsWith('cancel_early_')) {
+    const withdrawalId = data.replace('cancel_early_', '')
+
+    bot.editMessageReplyMarkup(
+      { inline_keyboard: [] },
+      { chat_id: chatId, message_id: messageId }
+    ).catch(() => {})
+
+    bot.sendMessage(chatId, t(lang, 'requestCancelled'))
+    userSessions.delete(chatId)
+  }
+
+  else if (data.startsWith('cancel_partial_')) {
+    const withdrawalId = data.replace('cancel_partial_', '')
+
+    bot.editMessageReplyMarkup(
+      { inline_keyboard: [] },
+      { chat_id: chatId, message_id: messageId }
+    ).catch(() => {})
+
+    bot.sendMessage(chatId, t(lang, 'requestCancelled'))
+    userSessions.delete(chatId)
+  }
+
+  else if (data.startsWith('cancel_referral_bonus_')) {
+    const withdrawalId = data.replace('cancel_referral_bonus_', '')
+
+    bot.editMessageReplyMarkup(
+      { inline_keyboard: [] },
+      { chat_id: chatId, message_id: messageId }
+    ).catch(() => {})
+
+    bot.sendMessage(chatId, t(lang, 'requestCancelled'))
+    userSessions.delete(chatId)
+  }
+
+  else if (data.startsWith('approve_upgrade_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const parts = data.replace('approve_upgrade_', '').split('_')
+    const upgradeId = parts[0]
+    const userId = parts[1]
+
+    try {
+      await axios.post(`${API_BASE_URL}/api/v1/telegram/upgrade/${upgradeId}/approve`, {
+        supportUserId: chatId.toString()
+      })
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.sendMessage(chatId, `Апгрейд ${upgradeId} подтверждён!\n\nПользователь получит уведомление.`)
+
+      const userSession = userSessions.get(parseInt(userId))
+      const userLang = userSession?.language || 'ru'
+
+      bot.sendMessage(parseInt(userId), t(userLang, 'upgradeConfirmed'), { 
+        parse_mode: 'HTML' 
+      }).catch(() => {})
+
+      userSessions.delete(parseInt(userId))
+
+    } catch (error: any) {
+      console.error('Error approving upgrade:', error.message)
+      bot.sendMessage(chatId, t('ru', 'errorApproving'))
+    }
+  }
+
+  else if (data.startsWith('reject_upgrade_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const parts = data.replace('reject_upgrade_', '').split('_')
+    const upgradeId = parts[0]
+    const userId = parts[1]
+
+    try {
+      await axios.post(`${API_BASE_URL}/api/v1/telegram/upgrade/${upgradeId}/reject`, {
+        supportUserId: chatId.toString()
+      })
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.sendMessage(chatId, `Апгрейд ${upgradeId} отклонён.\n\nПользователь получит уведомление.`)
+
+      const userSession = userSessions.get(parseInt(userId))
+      const userLang = userSession?.language || 'ru'
+
+      bot.sendMessage(parseInt(userId), t(userLang, 'upgradeDeclined'), { 
+        parse_mode: 'HTML' 
+      }).catch(() => {})
+
+      userSessions.delete(parseInt(userId))
+
+    } catch (error: any) {
+      console.error('Error rejecting upgrade:', error.message)
+      bot.sendMessage(chatId, t('ru', 'errorRejecting'))
+    }
+  }
+
+  else if (data.startsWith('approve_') && !data.includes('withdrawal') && !data.includes('upgrade') && !data.includes('early') && !data.includes('partial') && !data.includes('kyc') && !data.includes('referral_bonus')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const parts = data.replace('approve_', '').split('_')
+    const investmentId = parts[0]
+    const userId = parts[1]
+
+    try {
+      await axios.post(`${API_BASE_URL}/api/v1/telegram/investment/${investmentId}/approve`, {
+        supportUserId: chatId.toString()
+      })
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.sendMessage(chatId, `Инвестиция ${investmentId} подтверждена!\n\nПользователь получит уведомление.`)
+
+      const userSession = userSessions.get(parseInt(userId))
+      const userLang = userSession?.language || 'en'
+
+      bot.sendMessage(parseInt(userId), t(userLang, 'paymentConfirmed'), { 
+        parse_mode: 'HTML' 
+      }).catch(() => {})
+
+      userSessions.delete(parseInt(userId))
+
+    } catch (error: any) {
+      console.error('Error approving investment:', error.message)
+      bot.sendMessage(chatId, t('ru', 'errorApproving'))
+    }
+  }
+
+  else if (data.startsWith('reject_') && !data.includes('withdrawal') && !data.includes('upgrade') && !data.includes('early') && !data.includes('partial') && !data.includes('kyc') && !data.includes('referral_bonus')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const parts = data.replace('reject_', '').split('_')
+    const investmentId = parts[0]
+    const userId = parts[1]
+
+    try {
+      await axios.delete(`${API_BASE_URL}/api/v1/telegram/investment/${investmentId}`)
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.sendMessage(chatId, `Инвестиция ${investmentId} отклонена.\n\nПользователь получит уведомление.`)
+
+      const userSession = userSessions.get(parseInt(userId))
+      const userLang = userSession?.language || 'en'
+
+      bot.sendMessage(parseInt(userId), t(userLang, 'paymentDeclined'), { 
+        parse_mode: 'HTML' 
+      }).catch(() => {})
+
+      userSessions.delete(parseInt(userId))
+
+    } catch (error: any) {
+      console.error('Error rejecting investment:', error.message)
+      bot.sendMessage(chatId, t('ru', 'errorRejecting'))
+    }
+  }
+
+  else if (data.startsWith('approve_early_withdrawal_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const withdrawalId = data.replace('approve_early_withdrawal_', '')
+
+    try {
+      console.log('Approving EARLY withdrawal:', withdrawalId)
+
+      await axios.post(
+        `${API_BASE_URL}/api/v1/telegram/early-withdrawal/${withdrawalId}/approve`,
+        { supportUserId: chatId.toString() }
+      )
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.answerCallbackQuery(query.id, {
+        text: 'Досрочный вывод подтверждён'
+      })
+
+      bot.sendMessage(
+        chatId,
+        `Досрочный вывод подтверждён!\n\nWithdrawal ID: \`${withdrawalId}\``,
+        { parse_mode: 'Markdown' }
+      )
+
+      console.log('Early withdrawal approved:', withdrawalId)
+    } catch (error: any) {
+      console.error('Error approving early withdrawal:', error.message)
+      bot.answerCallbackQuery(query.id, {
+        text: 'Ошибка при подтверждении'
+      })
+      
+      if (axios.isAxiosError(error)) {
+        console.error('API Error:', error.response?.status, error.response?.data)
+      }
+    }
+  }
+
+  else if (data.startsWith('reject_early_withdrawal_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const withdrawalId = data.replace('reject_early_withdrawal_', '')
+
+    try {
+      console.log('Rejecting EARLY withdrawal:', withdrawalId)
+
+      await axios.post(
+        `${API_BASE_URL}/api/v1/telegram/early-withdrawal/${withdrawalId}/reject`,
+        { 
+          supportUserId: chatId.toString(),
+          reason: 'Отклонено администратором'
+        }
+      )
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.answerCallbackQuery(query.id, {
+        text: 'Досрочный вывод отклонён'
+      })
+
+      bot.sendMessage(
+        chatId,
+        `Досрочный вывод отклонён\n\nWithdrawal ID: \`${withdrawalId}\``,
+        { parse_mode: 'Markdown' }
+      )
+
+      console.log('Early withdrawal rejected:', withdrawalId)
+    } catch (error: any) {
+      console.error('Error rejecting early withdrawal:', error.message)
+      bot.answerCallbackQuery(query.id, {
+        text: 'Ошибка при отклонении'
+      })
+      
+      if (axios.isAxiosError(error)) {
+        console.error('API Error:', error.response?.status, error.response?.data)
+      }
+    }
+  }
+
+  else if (data.startsWith('approve_partial_withdrawal_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const withdrawalId = data.replace('approve_partial_withdrawal_', '')
+
+    try {
+      console.log('Approving PARTIAL withdrawal:', withdrawalId)
+
+      await axios.post(
+        `${API_BASE_URL}/api/v1/telegram/partial-withdrawal/${withdrawalId}/approve`,
+        { supportUserId: chatId.toString() }
+      )
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.answerCallbackQuery(query.id, {
+        text: 'Частичный вывод подтверждён'
+      })
+
+      bot.sendMessage(
+        chatId,
+        `Частичный вывод подтверждён!\n\nWithdrawal ID: \`${withdrawalId}\``,
+        { parse_mode: 'Markdown' }
+      )
+
+      console.log('Partial withdrawal approved:', withdrawalId)
+    } catch (error: any) {
+      console.error('Error approving partial withdrawal:', error.message)
+      bot.answerCallbackQuery(query.id, {
+        text: 'Ошибка при подтверждении'
+      })
+      
+      if (axios.isAxiosError(error)) {
+        console.error('API Error:', error.response?.status, error.response?.data)
+      }
+    }
+  }
+
+  else if (data.startsWith('reject_partial_withdrawal_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const withdrawalId = data.replace('reject_partial_withdrawal_', '')
+
+    try {
+      console.log('Rejecting PARTIAL withdrawal:', withdrawalId)
+
+      await axios.post(
+        `${API_BASE_URL}/api/v1/telegram/partial-withdrawal/${withdrawalId}/reject`,
+        { 
+          supportUserId: chatId.toString(),
+          reason: 'Отклонено администратором'
+        }
+      )
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.answerCallbackQuery(query.id, {
+        text: 'Частичный вывод отклонён'
+      })
+
+      bot.sendMessage(
+        chatId,
+        `Частичный вывод отклонён\n\nWithdrawal ID: \`${withdrawalId}\``,
+        { parse_mode: 'Markdown' }
+      )
+
+      console.log('Partial withdrawal rejected:', withdrawalId)
+    } catch (error: any) {
+      console.error('Error rejecting partial withdrawal:', error.message)
+      bot.answerCallbackQuery(query.id, {
+        text: 'Ошибка при отклонении'
+      })
+      
+      if (axios.isAxiosError(error)) {
+        console.error('API Error:', error.response?.status, error.response?.data)
+      }
+    }
+  }
+
+  else if (data.startsWith('approve_withdrawal_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const withdrawalId = data.replace('approve_withdrawal_', '')
+
+    try {
+      console.log('Approving FULL withdrawal:', withdrawalId)
+
+      await axios.post(
+        `${API_BASE_URL}/api/v1/telegram/withdrawal/${withdrawalId}/approve`,
+        { supportUserId: chatId.toString() }
+      )
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.answerCallbackQuery(query.id, {
+        text: 'Полный вывод подтверждён'
+      })
+
+      bot.sendMessage(
+        chatId,
+        `Полный вывод средств подтверждён!\n\nWithdrawal ID: \`${withdrawalId}\``,
+        { parse_mode: 'Markdown' }
+      )
+
+      console.log('Full withdrawal approved:', withdrawalId)
+    } catch (error: any) {
+      console.error('Error approving full withdrawal:', error.message)
+      bot.answerCallbackQuery(query.id, {
+        text: 'Ошибка при подтверждении'
+      })
+      
+      if (axios.isAxiosError(error)) {
+        console.error('API Error:', error.response?.status, error.response?.data)
+      }
+    }
+  }
+
+  else if (data.startsWith('reject_withdrawal_')) {
+    if (chatId.toString() !== SUPPORT_USER_ID.toString()) {
+      bot.answerCallbackQuery(query.id, { text: t('ru', 'accessDenied') }).catch(() => {})
+      return
+    }
+
+    const withdrawalId = data.replace('reject_withdrawal_', '')
+
+    try {
+      console.log('Rejecting FULL withdrawal:', withdrawalId)
+
+      await axios.post(
+        `${API_BASE_URL}/api/v1/telegram/withdrawal/${withdrawalId}/reject`,
+        { 
+          supportUserId: chatId.toString(),
+          reason: 'Отклонено администратором'
+        }
+      )
+
+      bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        { chat_id: chatId, message_id: messageId }
+      ).catch(() => {})
+
+      bot.answerCallbackQuery(query.id, {
+        text: 'Полный вывод отклонён'
+      })
+
+      bot.sendMessage(
+        chatId,
+        `Полный вывод средств отклонён\n\nWithdrawal ID: \`${withdrawalId}\``,
+        { parse_mode: 'Markdown' }
+      )
+
+      console.log('Full withdrawal rejected:', withdrawalId)
+    } catch (error: any) {
+      console.error('Error rejecting full withdrawal:', error.message)
+      bot.answerCallbackQuery(query.id, {
+        text: 'Ошибка при отклонении'
+      })
+      
+      if (axios.isAxiosError(error)) {
+        console.error('API Error:', error.response?.status, error.response?.data)
+      }
+    }
+  }
+
+  bot.answerCallbackQuery(query.id).catch(() => {})
+})
+
+async function sendTelegramMessage(chatId: string | number, message: string, options: any = {}) {
+  try {
+    await bot.sendMessage(chatId, message, {
+      parse_mode: 'HTML',
+      ...options
+    })
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error sending Telegram message:', error.message)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function notifyKYCSubmission(kycData: {
+  userId: string
+  userEmail: string
+  userName: string
+  photoUrl: string
+  language: string
+}) {
+  try {
+    const lang = kycData.language || 'ru'
+    
+    const currentTime = new Date().toLocaleString('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+
+    const message = `
+НОВАЯ ЗАЯВКА НА KYC ВЕРИФИКАЦИЮ
+
+Информация о пользователе:
+User ID: <code>${kycData.userId}</code>
+Email: <code>${kycData.userEmail}</code>
+Имя: <b>${kycData.userName}</b>
+
+Дата подачи: ${currentTime}
+    `.trim()
+
+    await bot.sendMessage(ADMIN_CHAT_ID, message, {
+      parse_mode: 'HTML'
+    })
+
+    console.log('KYC notification sent to admin. User ID:', kycData.userId)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error sending KYC notification:', error.message)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function notifyWithdrawalRequest(withdrawalData: {
+  withdrawalId: string
+  investmentId: string
+  userId: string
+  userEmail: string
+  planName: string
+  amount: number  // ✅ ЭТО ДОЛЖНА БЫТЬ АКТУАЛЬНАЯ СУММА ИЗ withdrawal.amount
+  invested: number
+  profit: number  // ✅ ЭТО ДОЛЖНА БЫТЬ АКТУАЛЬНАЯ ПРИБЫЛЬ
+  trc20Address: string
+  language: string
+}) {
+  try {
+    const lang = withdrawalData.language || 'ru'
+    
+    const currentTime = new Date().toLocaleString('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+
+    // ✅ ИСПРАВЛЕНИЕ: Используем актуальные данные
+    const totalAmount = withdrawalData.amount  // Берём из withdrawal.amount
+    const actualProfit = totalAmount - withdrawalData.invested  // Пересчитываем прибыль
+
+    const message = `
+${t(lang, 'withdrawalTitle')}
+
+${t(lang, 'withdrawalUserInfo')}
+User ID: <code>${withdrawalData.userId}</code>
+Email: <code>${withdrawalData.userEmail}</code>
+
+${t(lang, 'withdrawalDetails')}
+Investment ID: <code>${withdrawalData.investmentId}</code>
+Withdrawal ID: <code>${withdrawalData.withdrawalId}</code>
+${t(lang, 'plan')}: <b>${withdrawalData.planName}</b>
+${t(lang, 'invested')}: $${withdrawalData.invested.toFixed(2)}
+${t(lang, 'profit')}: +$${actualProfit.toFixed(2)}
+<b>${t(lang, 'withdrawAmount')}: $${totalAmount.toFixed(2)} USDT</b>
+
+${t(lang, 'trc20Address')}
+<code>${withdrawalData.trc20Address}</code>
+
+${t(lang, 'requestDate')} ${currentTime}
+
+Проверьте корректность адреса и подтвердите отправку средств:
+    `.trim()
+
+    await bot.sendMessage(ADMIN_CHAT_ID, message, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: t('ru', 'buttonSentFunds'), callback_data: `approve_withdrawal_${withdrawalData.withdrawalId}` },
+            { text: t('ru', 'buttonReject'), callback_data: `reject_withdrawal_${withdrawalData.withdrawalId}` }
+          ]
+        ]
+      }
+    })
+
+    console.log('✅ Full withdrawal notification sent. Withdrawal ID:', withdrawalData.withdrawalId, 'Total:', totalAmount)
+    return { success: true }
+  } catch (error: any) {
+    console.error('❌ Error sending withdrawal notification:', error.message)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function notifyEarlyWithdrawal(withdrawalData: {
+  withdrawalId: string
+  investmentId: string
+  userId: string
+  userEmail: string
+  planName: string
+  investmentAmount: number
+  earnedInterest: number
+  withdrawnProfits: number
+  totalAmount: number
+  daysInvested: number
+  trc20Address: string
+  language: string
+}) {
+  try {
+    const lang = withdrawalData.language || 'ru'
+    
+    const currentTime = new Date().toLocaleString('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+
+    const message = `
+<b>НОВАЯ ЗАЯВКА НА ДОСРОЧНЫЙ ВЫВОД</b>
+
+<b>Информация о пользователе:</b>
+User ID: <code>${withdrawalData.userId}</code>
+Email: <code>${withdrawalData.userEmail}</code>
+
+<b>Детали вывода:</b>
+Investment ID: <code>${withdrawalData.investmentId}</code>
+Early Withdrawal ID: <code>${withdrawalData.withdrawalId}</code>
+План: <b>${withdrawalData.planName}</b>
+
+<b>Расчет:</b>
+Инвестировано: $${withdrawalData.investmentAmount.toFixed(2)}
+Дней инвестировано: ${withdrawalData.daysInvested} / 30
+${withdrawalData.withdrawnProfits > 0 ? `Уже снято прибыли: $${withdrawalData.withdrawnProfits.toFixed(2)}` : ''}
+<b>Сумма к выводу: $${withdrawalData.totalAmount.toFixed(2)}</b>
+
+<b>TRC-20 адрес:</b>
+<code>${withdrawalData.trc20Address}</code>
+
+<b>Дата заявки:</b> ${currentTime}
+
+${withdrawalData.withdrawnProfits > 0 ? `<b>Расчет:</b> $${withdrawalData.investmentAmount.toFixed(2)} - $${withdrawalData.withdrawnProfits.toFixed(2)} = $${withdrawalData.totalAmount.toFixed(2)}` : ''}
+
+Подтвердите досрочный вывод средств:
+    `.trim()
+
+    await bot.sendMessage(ADMIN_CHAT_ID, message, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: 'Отправил средства', callback_data: `approve_early_withdrawal_${withdrawalData.withdrawalId}` },
+            { text: 'Отклонить', callback_data: `reject_early_withdrawal_${withdrawalData.withdrawalId}` }
+          ]
+        ]
+      }
+    })
+
+    console.log('Early withdrawal notification sent to admin. Withdrawal ID:', withdrawalData.withdrawalId)
+    return { 
+      success: true,
+      botLink: `https://t.me/${process.env.TELEGRAM_BOT_USERNAME}?start=early_${withdrawalData.withdrawalId}`
+    }
+  } catch (error: any) {
+    console.error('Error sending early withdrawal notification:', error.message)
+    return { success: false, error: error.message }
+  }
+}
+
+export async function notifyPartialWithdrawal(withdrawalData: {
+  withdrawalId: string
+  investmentId: string
+  userId: string
+  userEmail: string
+  planName: string
+  investmentAmount: number
+  amount: number  // ✅ ЭТО КАСТОМНАЯ СУММА ОТ ЮЗЕРА
+  totalWithdrawn: number
+  trc20Address: string
+  language: string
+}) {
+  try {
+    const lang = withdrawalData.language || 'ru'
+    
+    const currentTime = new Date().toLocaleString('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+
+    const message = `
+<b>НОВАЯ ЗАЯВКА НА ЧАСТИЧНЫЙ ВЫВОД ПРИБЫЛИ</b>
+
+<b>Информация о пользователе:</b>
+User ID: <code>${withdrawalData.userId}</code>
+Email: <code>${withdrawalData.userEmail}</code>
+
+<b>Детали вывода:</b>
+Investment ID: <code>${withdrawalData.investmentId}</code>
+Partial Withdrawal ID: <code>${withdrawalData.withdrawalId}</code>
+План: <b>${withdrawalData.planName}</b>
+Инвестировано: $${withdrawalData.investmentAmount.toFixed(2)}
+
+<b>Расчет:</b>
+<b>Запрошенная сумма вывода: $${withdrawalData.amount.toFixed(2)}</b>
+Всего ранее снято: $${withdrawalData.totalWithdrawn.toFixed(2)}
+Новый баланс снятий: $${(withdrawalData.totalWithdrawn + withdrawalData.amount).toFixed(2)}
+
+<b>TRC-20 адрес:</b>
+<code>${withdrawalData.trc20Address}</code>
+
+<b>Дата заявки:</b> ${currentTime}
+
+<b>Основная сумма остается в инвестиции</b>
+
+Подтвердите частичный вывод прибыли:
+    `.trim()
+
+    await bot.sendMessage(ADMIN_CHAT_ID, message, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: 'Отправил средства', callback_data: `approve_partial_withdrawal_${withdrawalData.withdrawalId}` },
+            { text: 'Отклонить', callback_data: `reject_partial_withdrawal_${withdrawalData.withdrawalId}` }
+          ]
+        ]
+      }
+    })
+
+    console.log('Partial withdrawal notification sent to admin. Withdrawal ID:', withdrawalData.withdrawalId)
+    return { 
+      success: true,
+      botLink: `https://t.me/${process.env.TELEGRAM_BOT_USERNAME}?start=partial_${withdrawalData.withdrawalId}`
+    }
+  } catch (error: any) {
+    console.error('Error sending partial withdrawal notification:', error.message)
+    return { success: false, error: error.message }
+  }
+}
+
+
+export async function notifyReferralBonusWithdrawal(
+  withdrawalId: string,
+  userId: string,
+  userEmail: string,
+  amount: number,
+  trc20Address: string,
+  level: number
+) {
+  if (!bot) {
+    console.warn('Telegram bot not initialized, skipping notification')
+    return
+  }
+
+  const supportChatId = ADMIN_CHAT_ID || SUPPORT_USER_ID
+  if (!supportChatId) {
+    console.warn('ADMIN_CHAT_ID not configured')
+    return
+  }
+
+  try {
+    const shortId = withdrawalId.substring(0, 8)
+
+    const message = `
+<b>🔔 НОВАЯ ЗАЯВКА НА ВЫВОД РЕФЕРАЛЬНОГО БОНУСА</b>
+
+<b>Информация о пользователе:</b>
+User ID: <code>${userId.substring(0, 8)}...</code>
+Email: <code>${userEmail}</code>
+
+<b>Детали вывода:</b>
+Withdrawal ID: <code>${withdrawalId}</code>
+Уровень: <b>${level}</b>
+Сумма бонуса: <b>$${amount.toFixed(2)} USDT</b>
+
+<b>TRC-20 адрес получателя:</b>
+<code>${trc20Address}</code>
+
+<b>Дата заявки:</b> ${new Date().toLocaleString('ru-RU')}
+
+Переведите средства на указанный адрес и подтвердите операцию:
+    `.trim()
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '✅ Отправил средства',
+            callback_data: `rba_${shortId}`
+          },
+          {
+            text: '❌ Отклонить',
+            callback_data: `rbr_${shortId}`
+          }
+        ]
+      ]
+    }
+
+    console.log('📤 Sending referral bonus withdrawal notification to Telegram...')
+    console.log('   Full withdrawal ID:', withdrawalId)
+    console.log('   Short ID for buttons:', shortId)
+    console.log('   Admin Chat ID:', supportChatId)
+
+    await bot.sendMessage(supportChatId, message, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard
+    })
+
+    console.log('✅ Referral bonus withdrawal notification sent successfully')
+
+  } catch (error: any) {
+    console.error('❌ Error sending referral bonus withdrawal notification:', error.message)
+    if (error.response) {
+      console.error('   Response:', error.response)
+    }
+    throw error
+  }
+}
+
+export async function notifyUpgradeRequest(upgradeData: {
+  upgradeId: string
+  investmentId: string
+  userId: string
+  userEmail: string
+  oldPackage: string
+  newPackage: string
+  oldAPY: number
+  newAPY: number
+  oldAmount: number
+  additionalAmount: number
+  totalAmount: number
+  adminWallet: string
+  senderWallet: string
+  language: string
+}) {
+  try {
+    const lang = upgradeData.language || 'ru'
+    
+    const currentTime = new Date().toLocaleString('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+
+    const message = `
+<b>НОВАЯ ЗАЯВКА НА АПГРЕЙД</b>
+
+<b>Информация о пользователе:</b>
+User ID: <code>${upgradeData.userId}</code>
+Email: <code>${upgradeData.userEmail}</code>
+
+<b>Детали апгрейда:</b>
+Investment ID: <code>${upgradeData.investmentId}</code>
+Upgrade ID: <code>${upgradeData.upgradeId}</code>
+
+<b>Изменения:</b>
+План: ${upgradeData.oldPackage} → <b>${upgradeData.newPackage}</b>
+APY: ${upgradeData.oldAPY}% → <b>${upgradeData.newAPY}%</b>
+Текущая сумма: $${upgradeData.oldAmount.toFixed(2)}
+Пополнение: <b>+$${upgradeData.additionalAmount.toFixed(2)}</b>
+<b>Новая сумма: $${upgradeData.totalAmount.toFixed(2)}</b>
+
+<b>Кошелёк админа:</b>
+<code>${upgradeData.adminWallet}</code>
+
+<b>Кошелёк отправителя:</b>
+<code>${upgradeData.senderWallet}</code>
+
+<b>Дата заявки:</b> ${currentTime}
+
+Проверьте поступление средств и подтвердите апгрейд:
+    `.trim()
+
+    await bot.sendMessage(ADMIN_CHAT_ID, message, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: t('ru', 'buttonApproveUpgrade'), callback_data: `approve_upgrade_${upgradeData.upgradeId}` },
+            { text: t('ru', 'buttonReject'), callback_data: `reject_upgrade_${upgradeData.upgradeId}` }
+          ]
+        ]
+      }
+    })
+
+    console.log('Upgrade notification sent to admin. Upgrade ID:', upgradeData.upgradeId)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error sending upgrade notification:', error.message)
+    return { success: false, error: error.message }
+  }
+}
+
+bot.on('polling_error', (error: Error) => {
+  console.error('Polling error:', error.message)
+})
+
+console.log('Telegram bot started successfully!')
+console.log('Listening for updates...')
+
+import { initializeProfitNotifier } from './profit-notifier'
+
+// Инициализируем ежедневные уведомления о прибыли
+initializeProfitNotifier(bot)
+console.log('Profit notifier initialized')
+
+bot.on('polling_error', (error: Error) => {
+  console.error('Polling error:', error.message)
+})
+
+console.log('Telegram bot started successfully!')
+console.log('Listening for updates...')
+
+export { bot, sendTelegramMessage, userSessions }

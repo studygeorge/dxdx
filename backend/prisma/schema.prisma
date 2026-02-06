@@ -1,0 +1,677 @@
+// backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String?  @unique
+  username    String?  @unique
+  password    String?
+  firstName   String?
+  lastName    String?
+  
+  // Telegram привязка
+  telegramId       String?  @unique
+  telegramUsername String?
+  telegramFirstName String?
+  telegramLastName  String?
+  telegramPhotoUrl  String?
+  telegramAuthDate  DateTime?
+  
+  // Телефон при регистрации
+  phoneNumber      String?
+  
+  // Закреплённый продажник
+  assignedSalesperson String?
+  
+  // Откуда пришел клиент
+  referralSource   String?
+  
+  // Календарь, комментарий, задача, дата
+  calendarNote     String?
+  adminComment     String?
+  adminTask        String?
+  taskDate         String?
+  
+  // Web3 поля
+  walletAddress    String?  @unique
+  ensName          String?
+  authMethod       String   @default("EMAIL")
+  connectedWallets Json?
+  
+  // Реферальная система
+  referralCode     String?  @unique
+  referredBy       String?
+  
+  // Язык пользователя
+  language         String   @default("en")
+  
+  // KYC с видео-верификацией
+  kycStatus          String    @default("NOT_SUBMITTED")
+  kycPhotoUrl        String?
+  kycVideoUrl        String?
+  kycPhotoTakenAt    DateTime?
+  kycVideoTakenAt    DateTime?
+  kycPhotoMetadata   Json?
+  kycVideoMetadata   Json?
+  kycSubmittedAt     DateTime?
+  kycProcessedAt     DateTime?
+  kycProcessedBy     String?
+  kycRejectionReason String?
+  
+  // 2FA
+  twoFactorEnabled Boolean  @default(false)
+  twoFactorSecret  String?
+  backupCodes      String?
+  
+  // Email verification
+  isEmailVerified    Boolean   @default(false)
+  emailVerifyToken   String?
+  emailVerifyExpiry  DateTime?
+  
+  // Password reset
+  passwordResetToken       String?
+  passwordResetTokenExpiry DateTime?
+  
+  // Security
+  loginAttempts    Int       @default(0)
+  lockoutUntil     DateTime?
+  isActive         Boolean   @default(true)
+  
+  // Метаданные
+  lastLoginAt      DateTime?
+  lastLoginIP      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  
+  // Связи
+  sessions         Session[]
+  trades           Trade[]
+  wallets          Wallet[]
+  auditLogs        AuditLog[]
+  stakings         Staking[]
+  investments      Investment[]
+  withdrawals      WithdrawalRequest[]
+  profitHistory    ProfitHistory[]
+  
+  // Реферальные связи
+  referrer         User?              @relation("UserReferrals", fields: [referredBy], references: [id], onDelete: SetNull)
+  referrals        User[]             @relation("UserReferrals")
+  referralEarnings ReferralEarning[]  @relation("UserEarnings")
+  referralPayments ReferralEarning[]  @relation("ReferrerEarnings")
+  
+  // Апгрейды и досрочные выводы
+  upgrades          InvestmentUpgrade[]
+  earlyWithdrawals  EarlyWithdrawal[]
+  partialWithdrawals PartialWithdrawal[]
+  reinvests         InvestmentReinvest[]
+  
+  // Выводы реферальных бонусов
+  referralWithdrawals           ReferralWithdrawalRequest[] @relation("UserReferralWithdrawals")
+  referralWithdrawalsAsReferral ReferralWithdrawalRequest[] @relation("ReferralUserWithdrawals")
+  
+  @@index([kycStatus])
+  @@index([kycSubmittedAt])
+  @@index([kycPhotoTakenAt])
+  @@index([kycVideoTakenAt])
+  @@index([language])
+  @@index([telegramId])
+  @@index([telegramUsername])
+  @@index([assignedSalesperson])
+  @@index([phoneNumber])
+  @@index([taskDate])
+  @@index([referralSource])
+  @@map("users")
+}
+
+model ProfitHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  totalProfit Float    @default(0)
+  recordedAt  DateTime @default(now())
+
+  @@index([userId, recordedAt])
+  @@map("profit_history")
+}
+
+model Session {
+  id           String    @id @default(uuid())
+  userId       String
+  token        String    @unique
+  refreshToken String?   @unique
+  userAgent    String?
+  ipAddress    String?
+  location     String?
+  deviceInfo   String?
+  sessionType  String    @default("EMAIL")
+  expiresAt    DateTime
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime  @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+model Web3Session {
+  id            String    @id @default(uuid())
+  walletAddress String
+  nonce         String    @unique
+  message       String
+  signature     String?
+  isVerified    Boolean   @default(false)
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+  
+  @@map("web3_sessions")
+}
+
+model Wallet {
+  id            String   @id @default(uuid())
+  userId        String
+  cryptocurrency String
+  address       String
+  privateKey    String?
+  balance       Decimal  @default(0) @db.Decimal(18, 2)
+  isActive      Boolean  @default(true)
+  isMainWallet  Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, cryptocurrency, address])
+  @@map("wallets")
+}
+
+model Trade {
+  id              String    @id @default(uuid())
+  userId          String
+  tradeType       String
+  fromCurrency    String
+  toCurrency      String
+  fromAmount      Decimal   @db.Decimal(18, 2)
+  toAmount        Decimal   @db.Decimal(18, 2)
+  exchangeRate    Decimal   @db.Decimal(18, 8)
+  fee             Decimal   @db.Decimal(18, 2)
+  status          String    @default("PENDING")
+  
+  transactionHash String?
+  blockchainFee   Decimal?  @db.Decimal(18, 8)
+  blockNumber     Int?
+  confirmations   Int       @default(0)
+  notes           String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  completedAt     DateTime?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("trades")
+}
+
+model Staking {
+  id              String    @id @default(uuid())
+  userId          String
+  amount          Decimal   @db.Decimal(18, 2)
+  currency        String    @default("USDT")
+  apy             Decimal   @db.Decimal(5, 2)
+  duration        Int
+  status          String    @default("ACTIVE")
+  
+  earned          Decimal   @default(0) @db.Decimal(18, 2)
+  lastRewardAt    DateTime?
+  
+  transactionHash String?
+  walletAddress   String?
+  
+  startDate       DateTime  @default(now())
+  endDate         DateTime
+  completedAt     DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([status])
+  @@map("stakings")
+}
+
+model StakingPlan {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  apy         Decimal  @db.Decimal(5, 2)
+  minAmount   Decimal  @db.Decimal(18, 2)
+  maxAmount   Decimal? @db.Decimal(18, 2)
+  currency    String   @default("USDT")
+  isActive    Boolean  @default(true)
+  description String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  investments Investment[]
+  
+  @@map("staking_plans")
+}
+
+model Investment {
+  id                  String    @id @default(uuid())
+  userId              String
+  planId              String
+  
+  amount              Decimal   @db.Decimal(18, 2)
+  currency            String    @default("USDT")
+  roi                 Decimal   @db.Decimal(5, 2)
+  duration            Int
+  expectedReturn      Decimal   @db.Decimal(18, 2)
+  totalReturn         Decimal   @db.Decimal(18, 2)
+  
+  userWalletAddress   String
+  adminWalletAddress  String
+  transactionHash     String?
+  blockNumber         Int?
+  confirmations       Int       @default(0)
+  
+  status              String    @default("PENDING")
+  startDate           DateTime?
+  endDate             DateTime?
+  completedAt         DateTime?
+  
+  withdrawalRequested Boolean   @default(false)
+  
+  accumulatedInterest Decimal   @default(0) @db.Decimal(18, 2)
+  lastUpgradeDate     DateTime?
+  
+  durationBonus       Decimal   @default(0) @db.Decimal(5, 2)
+  bonusAmount         Decimal   @default(0) @db.Decimal(18, 2)
+  effectiveROI        Decimal   @default(0) @db.Decimal(5, 2)
+  
+  bonusUnlockedAt     DateTime?
+  bonusWithdrawn      Boolean    @default(false)
+  
+  withdrawnProfits    Decimal   @default(0) @db.Decimal(18, 2)
+  
+  simulatedCurrentDate DateTime?
+  
+  language            String    @default("en")
+  paymentMethod       String    @default("TELEGRAM_BOT")
+  
+  // 🆕 ОТЛОЖЕННЫЙ АПГРЕЙД (активация 15-го и 30-го числа)
+  pendingUpgradeROI     Decimal?  @db.Decimal(5, 2)
+  pendingUpgradePlan    String?
+  upgradeActivationDate DateTime?
+  upgradeRequestDate    DateTime?
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                StakingPlan      @relation(fields: [planId], references: [id])
+  withdrawals         WithdrawalRequest[]
+  referralEarnings    ReferralEarning[]
+  upgrades            InvestmentUpgrade[]
+  earlyWithdrawals    EarlyWithdrawal[]
+  partialWithdrawals  PartialWithdrawal[]
+  referralWithdrawals ReferralWithdrawalRequest[]
+  reinvests           InvestmentReinvest[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([transactionHash])
+  @@index([lastUpgradeDate])
+  @@index([duration])
+  @@index([language])
+  @@index([simulatedCurrentDate])
+  @@index([bonusUnlockedAt])
+  @@index([bonusWithdrawn])
+  @@index([pendingUpgradeROI])
+  @@index([upgradeActivationDate])
+  @@map("investments")
+}
+
+model InvestmentUpgrade {
+  id                  String      @id @default(uuid())
+  investmentId        String
+  investment          Investment  @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  upgradeType         String?
+  
+  oldPackage          String
+  newPackage          String
+  oldAPY              Decimal     @db.Decimal(5, 2)
+  newAPY              Decimal     @db.Decimal(5, 2)
+  additionalAmount    Decimal?    @db.Decimal(18, 2)
+  
+  oldDuration         Int?
+  newDuration         Int?
+  
+  oldEndDate          DateTime
+  newEndDate          DateTime
+  
+  adminWalletAddress  String?
+  senderWalletAddress String?
+  accumulatedInterest Decimal?    @default(0) @db.Decimal(18, 2)
+  
+  status              String      @default("PENDING")
+  requestDate         DateTime    @default(now())
+  processedDate       DateTime?
+  createdDate         DateTime    @default(now())
+  
+  @@index([investmentId])
+  @@index([userId])
+  @@index([status])
+  @@index([upgradeType])
+  @@map("investment_upgrades")
+}
+
+// ✅ ТАБЛИЦА: Реинвестирование прибыли
+model InvestmentReinvest {
+  id                  String      @id @default(uuid())
+  investmentId        String
+  investment          Investment  @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  reinvestedAmount    Decimal     @db.Decimal(18, 2)
+  fromProfit          Decimal     @db.Decimal(18, 2)
+  
+  oldPackage          String
+  newPackage          String
+  oldROI              Decimal     @db.Decimal(5, 2)
+  newROI              Decimal     @db.Decimal(5, 2)
+  oldAmount           Decimal     @db.Decimal(18, 2)
+  newAmount           Decimal     @db.Decimal(18, 2)
+  
+  upgraded            Boolean     @default(false)
+  
+  status              String      @default("COMPLETED")
+  requestDate         DateTime    @default(now())
+  processedDate       DateTime?
+  
+  @@index([investmentId])
+  @@index([userId])
+  @@index([status])
+  @@index([requestDate])
+  @@map("investment_reinvests")
+}
+
+model EarlyWithdrawal {
+  id                String      @id @default(uuid())
+  investmentId      String
+  investment        Investment  @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  investmentAmount  Decimal     @db.Decimal(18, 2)
+  daysInvested      Int
+  earnedInterest    Decimal     @db.Decimal(18, 2)
+  withdrawnProfits  Decimal     @default(0) @db.Decimal(18, 2)
+  totalAmount       Decimal     @db.Decimal(18, 2)
+  
+  trc20Address      String?
+  
+  status            String      @default("PENDING")
+  requestDate       DateTime    @default(now())
+  processedDate     DateTime?
+  
+  @@index([investmentId])
+  @@index([userId])
+  @@index([status])
+  @@map("early_withdrawals")
+}
+
+model PartialWithdrawal {
+  id              String      @id @default(uuid())
+  investmentId    String
+  investment      Investment  @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  amount          Decimal     @db.Decimal(18, 2)
+  type            String      @default("PROFIT")
+  trc20Address    String
+  
+  status          String      @default("PENDING")
+  txHash          String?
+  rejectionReason String?
+  
+  requestDate     DateTime    @default(now())
+  processedDate   DateTime?
+  completedDate   DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([investmentId])
+  @@index([userId])
+  @@index([status])
+  @@index([requestDate])
+  @@map("partial_withdrawals")
+}
+
+model WithdrawalRequest {
+  id              String    @id @default(uuid())
+  userId          String
+  investmentId    String
+  
+  amount          Decimal   @db.Decimal(18, 2)
+  trc20Address    String
+  
+  status          String    @default("PENDING")
+  txHash          String?
+  rejectionReason String?
+  
+  createdAt       DateTime  @default(now())
+  processedAt     DateTime?
+  
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investment      Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([investmentId])
+  @@index([status])
+  @@map("withdrawal_requests")
+}
+
+model ReferralEarning {
+  id              String    @id @default(uuid())
+  
+  referrerId      String
+  referrer        User      @relation("ReferrerEarnings", fields: [referrerId], references: [id], onDelete: Cascade)
+  
+  userId          String
+  user            User      @relation("UserEarnings", fields: [userId], references: [id], onDelete: Cascade)
+  
+  investmentId    String
+  investment      Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  
+  level           Int
+  percentage      Decimal   @db.Decimal(5, 2)
+  amount          Decimal   @db.Decimal(18, 2)
+  
+  status          String    @default("PENDING")
+  paidAt          DateTime?
+  
+  withdrawn       Boolean   @default(false)
+  withdrawnAt     DateTime?
+  
+  createdAt       DateTime  @default(now())
+  
+  withdrawalRequests ReferralWithdrawalRequest[]
+  
+  @@index([referrerId])
+  @@index([userId])
+  @@index([investmentId])
+  @@index([status])
+  @@index([withdrawn])
+  @@map("referral_earnings")
+}
+
+model ReferralWithdrawalRequest {
+  id                 String    @id @default(uuid())
+  userId             String
+  referralUserId     String
+  investmentId       String
+  referralEarningId  String?
+  
+  amount             Decimal   @db.Decimal(18, 2)
+  trc20Address       String
+  
+  status             String    @default("PENDING")
+  txHash             String?
+  rejectionReason    String?
+  processedBy        String?
+  
+  createdAt          DateTime  @default(now())
+  processedAt        DateTime?
+  
+  user               User      @relation("UserReferralWithdrawals", fields: [userId], references: [id], onDelete: Cascade)
+  referralUser       User      @relation("ReferralUserWithdrawals", fields: [referralUserId], references: [id], onDelete: Cascade)
+  investment         Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  referralEarning    ReferralEarning? @relation(fields: [referralEarningId], references: [id])
+  
+  @@index([userId])
+  @@index([referralUserId])
+  @@index([investmentId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("referral_withdrawal_requests")
+}
+
+model TradingReport {
+  id              String    @id @default(uuid())
+  
+  tradeNumber     String    @unique
+  
+  status          String    @default("OPEN")
+  
+  exchange        String
+  
+  asset           String
+  
+  tradeType       String
+  
+  entryDate       DateTime
+  
+  entryPrice      Decimal   @db.Decimal(18, 8)
+  
+  exitDate        DateTime?
+  
+  exitPrice       Decimal?  @db.Decimal(18, 8)
+  
+  pnlPercentage   Decimal   @default(0) @db.Decimal(10, 2)
+  
+  comment         String?   @db.Text
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  createdBy       String?
+  updatedBy       String?
+  
+  @@index([status])
+  @@index([exchange])
+  @@index([asset])
+  @@index([tradeType])
+  @@index([entryDate])
+  @@index([exitDate])
+  @@index([tradeNumber])
+  @@map("trading_reports")
+}
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  userId      String?
+  action      String
+  resource    String?
+  details     String?
+  ipAddress   String?
+  userAgent   String?
+  success     Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("system_config")
+}
+
+model Admin {
+  id            String    @id @default(uuid())
+  telegramId    String    @unique
+  username      String?
+  firstName     String?
+  lastName      String?
+  photoUrl      String?
+  role          String    @default("ADMIN")
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  lastLoginIP   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  sessions      AdminSession[]
+  auditLogs     AdminAuditLog[]
+  
+  @@map("admins")
+}
+
+model AdminSession {
+  id           String    @id @default(uuid())
+  adminId      String
+  token        String    @unique
+  refreshToken String?   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime  @default(now())
+  
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  
+  @@map("admin_sessions")
+}
+
+model AdminAuditLog {
+  id          String    @id @default(uuid())
+  adminId     String
+  action      String
+  resource    String?
+  details     String?
+  ipAddress   String?
+  userAgent   String?
+  success     Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  
+  @@map("admin_audit_logs")
+}

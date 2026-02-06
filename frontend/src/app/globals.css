@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+    background: #000000;
+    height: 100%;
+  }
+  
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    background: #000000;
+    color: white;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Фикс для iOS Safari - только для поддерживающих браузеров */
+  @supports (height: 100dvh) {
+    body {
+      min-height: 100dvh;
+    }
+  }
+
+  @supports (-webkit-touch-callout: none) {
+    body {
+      min-height: -webkit-fill-available;
+    }
+  }
+}
+
+/* Кастомные стили для нашего дизайна */
+.bg-glow-teal {
+  background: #2dd4bf;
+  filter: blur(64px);
+  opacity: 0.2;
+}
+
+.bg-glow-emerald {
+  background: #34d399;
+  filter: blur(64px);
+  opacity: 0.15;
+}
+
+.bg-glow-cyan {
+  background: #22d3ee;
+  filter: blur(64px);
+  opacity: 0.1;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.text-teal {
+  color: #2dd4bf;
+}
+
+.bg-teal {
+  background-color: #14b8a6;
+}
+
+.bg-teal-hover:hover {
+  background-color: #2dd4bf;
+}
+
+.particle {
+  width: 4px;
+  height: 4px;
+  background: #2dd4bf;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: float 20s infinite linear;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px);
+    opacity: 0.3;
+  }
+  33% {
+    transform: translateY(-30px) translateX(15px);
+    opacity: 0.6;
+  }
+  66% {
+    transform: translateY(15px) translateX(-15px);
+    opacity: 0.4;
+  }
+}

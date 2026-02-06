@@ -1,0 +1,2786 @@
+'use client'
+import { useState, useEffect } from 'react'
+import KYCModal from './KYCModal'
+import InvestmentCard from './wallet/InvestmentCard'
+import WithdrawModal from './wallet/WithdrawModal'
+import UpgradeModal from './wallet/UpgradeModal'
+import EarlyWithdrawModal from './wallet/EarlyWithdrawModal'
+import PartialWithdrawModal from './wallet/PartialWithdrawModal'
+import WithdrawBonusModal from './wallet/WithdrawBonusModal'
+import { 
+  validateTRC20Address,
+  canUpgradeInvestment
+} from './wallet/calculations'
+import { translations as walletTranslations } from './wallet/translations'
+
+
+const API_BASE_URL = 'https://dxcapital-ai.com'
+
+
+// ✅ ФУНКЦИЯ РАСЧЁТА БОНУСА (ВЫНЕСЕНА В НАЧАЛО ФАЙЛА)
+const getDurationBonus = (duration, amount) => {
+  console.log('📊 getDurationBonus called:', { duration, amount })
+  
+  if (duration === 3) return 0
+  
+  if (duration === 6 || duration === 12) {
+    if (amount >= 1000) return 500
+    if (amount >= 500) return 200
+  }
+  
+  return 0
+}
+
+
+// ✅ ФУНКЦИЯ ДЛЯ РАСЧЁТА РЕАЛЬНЫХ ДНЕЙ ОТ НАЧАЛА ИНВЕСТИЦИИ
+const calculateDaysPassedFromStart = (investment) => {
+  const startDate = investment.createdAt ? new Date(investment.createdAt) : null
+  if (!startDate) return investment.daysPassed || 0
+  
+  const now = new Date()
+  const diffTime = Math.abs(now - startDate)
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+  return diffDays
+}
+
+
+export default function InvestingTab({ 
+  isMobile, 
+  language, 
+  investmentPlans = [],
+  plansLoading = false,
+  walletAddress = '',
+  setShowWeb3Modal,
+  onModalStateChange,
+  user 
+}) {
+  const [showInvestForm, setShowInvestForm] = useState(false)
+  const [investAmount, setInvestAmount] = useState('')
+  const [selectedDuration, setSelectedDuration] = useState(3)
+  const [senderWalletAddress, setSenderWalletAddress] = useState('')
+  const [selectedPlan, setSelectedPlan] = useState(null)
+  const [userInvestments, setUserInvestments] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [pendingInvestmentId, setPendingInvestmentId] = useState(null)
+  const [showPaymentStep, setShowPaymentStep] = useState(false)
+  const [showConfirmationStep, setShowConfirmationStep] = useState(false)
+  const [adminWalletAddress, setAdminWalletAddress] = useState('')
+  const [withdrawingBonusId, setWithdrawingBonusId] = useState(null)
+  const [maxAmountWarning, setMaxAmountWarning] = useState(false)
+  const [showKYCModal, setShowKYCModal] = useState(false)
+  const [userKYCStatus, setUserKYCStatus] = useState('NOT_SUBMITTED')
+  const [kycChecked, setKycChecked] = useState(false)
+
+
+  const [selectedInvestment, setSelectedInvestment] = useState(null)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [showEarlyWithdrawModal, setShowEarlyWithdrawModal] = useState(false)
+  const [showPartialWithdrawModal, setShowPartialWithdrawModal] = useState(false)
+  const [showWithdrawBonusModal, setShowWithdrawBonusModal] = useState(false)
+  const [trc20Address, setTrc20Address] = useState('')
+  const [withdrawError, setWithdrawError] = useState('')
+  const [withdrawSuccess, setWithdrawSuccess] = useState('')
+  const [upgradeError, setUpgradeError] = useState('')
+  const [upgradeSuccess, setUpgradeSuccess] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+
+  const packages = [
+    { name: 'Starter', apy: 14, minAmount: 100, maxAmount: 999 },
+    { name: 'Advanced', apy: 17, minAmount: 1000, maxAmount: 2999 },
+    { name: 'Pro', apy: 20, minAmount: 3000, maxAmount: 5999 },
+    { name: 'Elite', apy: 22, minAmount: 6000, maxAmount: 100000 }
+  ]
+
+
+  const DURATION_BONUSES = {
+    3: {
+      months: 3,
+      rateBonus: 0,
+      cashBonus: 0,
+      label: language === 'ru' ? '3 месяца' : '3 months',
+      description: language === 'ru' ? 'Базовая ставка' : 'Base rate'
+    },
+    6: {
+      months: 6,
+      rateBonus: 1.5,
+      cashBonus500: 200,
+      cashBonus1000: 500,
+      label: language === 'ru' ? '6 месяцев' : '6 months',
+      description: language === 'ru' ? 'Базовая ставка +1.5%' : 'Base rate +1.5%',
+      cashBonusLabel500: language === 'ru' ? 'Бонус $200 от $500' : 'Bonus $200 from $500',
+      cashBonusLabel1000: language === 'ru' ? 'Бонус $500 от $1000' : 'Bonus $500 from $1000'
+    },
+    12: {
+      months: 12,
+      rateBonus: 3,
+      cashBonus500: 200,
+      cashBonus1000: 500,
+      label: language === 'ru' ? '12 месяцев' : '12 months',
+      description: language === 'ru' ? 'Базовая ставка +3%' : 'Base rate +3%',
+      cashBonusLabel500: language === 'ru' ? 'Бонус $200 от $500' : 'Bonus $200 from $500',
+      cashBonusLabel1000: language === 'ru' ? 'Бонус $500 от $1000' : 'Bonus $500 from $1000'
+    }
+  }
+
+
+  const translations = {
+    en: {
+      ...walletTranslations.en,
+      openAccount: 'Open Investment Account',
+      investmentPlans: 'Investment Plans',
+      selectPlan: 'Select Your Plan',
+      enterAmount: 'Enter Investment Amount',
+      selectDuration: 'Select Investment Duration',
+      senderWalletLabel: 'Your TRC-20 Wallet Address',
+      senderWalletPlaceholder: 'Enter your TRON wallet address (TRC-20)',
+      senderWalletRequired: 'Please enter your TRC-20 wallet address',
+      invalidTrc20Address: 'Invalid TRC-20 address format',
+      walletHint: 'Specify the wallet address from which you will send USDT',
+      months: 'months',
+      baseRate: 'Base Rate',
+      effectiveRate: 'Effective Rate',
+      cashBonus: 'Cash Bonus',
+      bonusNote: 'Bonus available after half the investment period',
+      openInvestment: 'Continue',
+      confirmTransfer: 'I have transferred the funds',
+      cancel: 'Cancel',
+      minimumAmount: 'Min',
+      maximumAmount: 'Max',
+      investmentSuccess: 'Investment opened successfully',
+      noPlans: 'No investment plans available',
+      loading: 'Loading',
+      planRequired: 'Please select a plan',
+      amountRequired: 'Please enter amount',
+      durationRequired: 'Please select duration',
+      amountTooLow: 'Amount below minimum',
+      amountTooHigh: 'Amount exceeds maximum',
+      yourInvestments: 'Your Plans',
+      selectButton: 'Select',
+      interestReturn: 'Interest Return',
+      totalWithBonus: 'Total with Bonus',
+      chooseDuration: 'Choose duration: 3/6/12 months',
+      maxAmountReached: 'Maximum amount reached for this plan',
+      transferInstructions: 'Transfer Instructions',
+      transferStep1: 'Transfer the exact amount to the address below',
+      transferStep2: 'Make sure you are sending from your specified TRC-20 wallet',
+      transferStep3: 'After transfer, click the confirmation button',
+      adminWalletLabel: 'Admin Wallet Address (TRC-20)',
+      amountToTransfer: 'Amount to Transfer',
+      copyAddress: 'Copy Address',
+      addressCopied: 'Address Copied',
+      pendingConfirmation: 'Awaiting confirmation from support',
+      supportWillReview: 'Support team will review your transfer shortly',
+      close: 'Close',
+      step: 'Step',
+      of: 'of',
+      investmentDetails: 'Investment Details',
+      investedAmount: 'Invested Amount',
+      plan: 'Plan',
+      duration: 'Duration',
+      rateBonus: 'Rate Bonus',
+      expectedReturn: 'Expected Return',
+      totalReturn: 'Total Return',
+      kycRequired: 'KYC Verification Required',
+      kycRequiredMessage: 'You need to complete KYC verification before opening an investment account.',
+      withdrawBonusButton: 'Withdraw Bonus',
+      noBonusAvailable: 'No bonus available for this investment',
+      bonusAlreadyWithdrawn: 'Bonus has already been withdrawn',
+      bonusAvailableIn: 'Bonus will be available in'
+    },
+    ru: {
+      ...walletTranslations.ru,
+      openAccount: 'Открыть счёт',
+      investmentPlans: 'Инвестиционные планы',
+      selectPlan: 'Выберите план',
+      enterAmount: 'Введите сумму инвестиций',
+      selectDuration: 'Выберите срок инвестирования',
+      senderWalletLabel: 'Ваш TRC-20 адрес кошелька',
+      senderWalletPlaceholder: 'Введите адрес вашего TRON кошелька (TRC-20)',
+      senderWalletRequired: 'Пожалуйста, введите адрес вашего TRC-20 кошелька',
+      invalidTrc20Address: 'Неверный формат TRC-20 адреса',
+      walletHint: 'Укажите адрес кошелька, с которого будете отправлять USDT',
+      months: 'месяцев',
+      baseRate: 'Базовая ставка',
+      effectiveRate: 'Эффективная ставка',
+      cashBonus: 'Денежный бонус',
+      bonusNote: 'Бонус доступен через половину срока инвестиции',
+      openInvestment: 'Продолжить',
+      confirmTransfer: 'Я перевел средства',
+      cancel: 'Отмена',
+      minimumAmount: 'Мин',
+      maximumAmount: 'Макс',
+      investmentSuccess: 'Счёт успешно открыт',
+      noPlans: 'Нет доступных планов',
+      loading: 'Загрузка',
+      planRequired: 'Выберите план',
+      amountRequired: 'Введите сумму',
+      durationRequired: 'Выберите срок',
+      amountTooLow: 'Сумма ниже минимума',
+      amountTooHigh: 'Сумма превышает максимум',
+      yourInvestments: 'Ваши счета',
+      selectButton: 'Выбрать',
+      interestReturn: 'Доход от процентов',
+      totalWithBonus: 'Итого с бонусом',
+      chooseDuration: 'Выберите срок: 3/6/12 месяцев',
+      maxAmountReached: 'Достигнут максимум для этого плана',
+      transferInstructions: 'Инструкция по переводу',
+      transferStep1: 'Переведите точную сумму на адрес ниже',
+      transferStep2: 'Убедитесь, что отправляете с указанного вами TRC-20 кошелька',
+      transferStep3: 'После перевода нажмите кнопку подтверждения',
+      adminWalletLabel: 'Адрес кошелька администратора (TRC-20)',
+      amountToTransfer: 'Сумма для перевода',
+      copyAddress: 'Скопировать адрес',
+      addressCopied: 'Адрес скопирован',
+      pendingConfirmation: 'Ожидает подтверждения от поддержки',
+      supportWillReview: 'Команда поддержки скоро проверит ваш перевод.\nОкно можно закрыть.',
+      close: 'Закрыть',
+      step: 'Шаг',
+      of: 'из',
+      investmentDetails: 'Детали инвестиции',
+      investedAmount: 'Инвестированная сумма',
+      plan: 'План',
+      duration: 'Срок',
+      rateBonus: 'Бонус за срок',
+      expectedReturn: 'Ожидаемая прибыль',
+      totalReturn: 'Итого к возврату',
+      kycRequired: 'Требуется верификация KYC',
+      kycRequiredMessage: 'Необходимо пройти верификацию KYC перед открытием инвестиционного счета.',
+      withdrawBonusButton: 'Вывести бонус',
+      noBonusAvailable: 'Бонус недоступен для данной инвестиции',
+      bonusAlreadyWithdrawn: 'Бонус уже был выведен',
+      bonusAvailableIn: 'Бонус будет доступен через'
+    }
+  }
+
+
+  const t = translations[language]
+
+
+  useEffect(() => {
+    const hasModal = showInvestForm || showKYCModal || showPaymentStep || showConfirmationStep ||
+                     showWithdrawModal || showUpgradeModal || showEarlyWithdrawModal || 
+                     showPartialWithdrawModal || showWithdrawBonusModal
+    if (onModalStateChange) {
+      onModalStateChange(hasModal)
+    }
+  }, [showInvestForm, showKYCModal, showPaymentStep, showConfirmationStep, 
+      showWithdrawModal, showUpgradeModal, showEarlyWithdrawModal, 
+      showPartialWithdrawModal, showWithdrawBonusModal, onModalStateChange])
+
+
+  useEffect(() => {
+    if (user) {
+      fetchUserInvestments()
+      checkKYCStatus()
+    }
+  }, [user])
+
+
+  const checkKYCStatus = async () => {
+    try {
+      const token = localStorage.getItem('access_token')
+      if (!token) {
+        setKycChecked(true)
+        return
+      }
+
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/kyc/status`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'include'
+      })
+
+
+      if (response.ok) {
+        const data = await response.json()
+        setUserKYCStatus(data.data?.kycStatus || 'NOT_SUBMITTED')
+      }
+    } catch (error) {
+      console.error('Ошибка проверки KYC статуса:', error)
+    } finally {
+      setKycChecked(true)
+    }
+  }
+
+
+  const fetchUserInvestments = async () => {
+    const token = localStorage.getItem('access_token')
+    if (!token) return
+
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/investments/my`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      })
+
+
+      if (response.ok) {
+        const data = await response.json()
+        const activeInvestments = (data.data || []).filter(
+          inv => inv.status === 'ACTIVE' || inv.status === 'COMPLETED'
+        )
+        setUserInvestments(activeInvestments)
+      }
+    } catch (error) {
+      console.error('Failed to fetch investments:', error)
+    }
+  }
+
+
+  const handleWithdrawClick = (investment) => {
+    setSelectedInvestment(investment)
+    setShowWithdrawModal(true)
+    setTrc20Address('')
+    setWithdrawError('')
+    setWithdrawSuccess('')
+  }
+
+
+  const handleUpgradeClick = (investment) => {
+    const upgradeCheck = canUpgradeInvestment(investment, t)
+    
+    if (!upgradeCheck.canUpgrade) {
+      setUpgradeError(upgradeCheck.reason)
+      return
+    }
+    
+    setSelectedInvestment(investment)
+    setShowUpgradeModal(true)
+    setUpgradeError('')
+    setUpgradeSuccess('')
+  }
+
+
+  const handlePartialWithdrawClick = (investment) => {
+    const availableProfit = investment.availableProfit || 0
+    const bonusAmount = investment.bonusAmount ? parseFloat(investment.bonusAmount) : 0
+    const isBonusUnlocked = investment.isBonusUnlocked || 
+      (investment.bonusUnlockedAt && new Date(investment.bonusUnlockedAt) <= new Date())
+    const isBonusWithdrawn = investment.bonusWithdrawn
+    const isEligibleForBonus = investment.duration >= 6
+
+
+    const hasProfitToWithdraw = availableProfit > 0
+    const hasBonusToWithdraw = bonusAmount > 0 && isEligibleForBonus && isBonusUnlocked && !isBonusWithdrawn
+
+
+    if (!hasProfitToWithdraw && !hasBonusToWithdraw) {
+      alert(t.noAccumulatedProfit || 'No profit or bonus available for withdrawal')
+      return
+    }
+
+
+    setSelectedInvestment(investment)
+    setShowPartialWithdrawModal(true)
+    setTrc20Address('')
+    setWithdrawError('')
+    setWithdrawSuccess('')
+  }
+
+
+  const handleEarlyWithdrawClick = (investment) => {
+    const daysPassed = investment.daysPassed || 0
+    
+    if (daysPassed > 30) {
+      alert(t.earlyWithdrawNotAvailable)
+      return
+    }
+
+
+    setSelectedInvestment(investment)
+    setShowEarlyWithdrawModal(true)
+    setTrc20Address('')
+    setWithdrawError('')
+    setWithdrawSuccess('')
+  }
+
+
+  // ✅ HANDLER ДЛЯ ВЫВОДА БОНУСА (ИСПРАВЛЕН)
+  const handleWithdrawBonusClick = (investment) => {
+    console.log('🎯 handleWithdrawBonusClick called:', investment)
+    
+    // ✅ ПРАВИЛЬНЫЙ ВЫЗОВ С АРГУМЕНТАМИ
+    const termBonus = getDurationBonus(
+      investment.duration,
+      parseFloat(investment.amount || 0)
+    )
+    
+    // ✅ РАСЧЁТ РЕАЛЬНЫХ ДНЕЙ ОТ НАЧАЛА ИНВЕСТИЦИИ
+    const actualDaysPassed = calculateDaysPassedFromStart(investment)
+    const halfTermDays = investment.duration === 6 ? 90 : investment.duration === 12 ? 180 : 0
+    const isHalfTermPassed = actualDaysPassed >= halfTermDays
+
+
+    console.log('🎁 Bonus Check:', {
+      investmentId: investment.id,
+      duration: investment.duration,
+      amount: parseFloat(investment.amount || 0),
+      termBonus,
+      bonusWithdrawn: investment.bonusWithdrawn,
+      daysPassed: investment.daysPassed,
+      actualDaysPassed,
+      halfTermDays,
+      isHalfTermPassed,
+      createdAt: investment.createdAt,
+      upgradedAt: investment.upgradedAt
+    })
+
+
+    // Проверка 1: Бонус доступен?
+    if (termBonus <= 0) {
+      alert(t.noBonusAvailable || 'No bonus available for this investment')
+      return
+    }
+
+
+    // Проверка 2: Уже выведен?
+    if (investment.bonusWithdrawn) {
+      alert(t.bonusAlreadyWithdrawn || 'Bonus has already been withdrawn')
+      return
+    }
+
+
+    // Проверка 3: Прошла ли половина срока?
+    if (!isHalfTermPassed) {
+      const daysLeft = halfTermDays - actualDaysPassed
+      alert(
+        language === 'ru' 
+          ? `Бонус будет доступен через ${daysLeft} дней (необходимо ${halfTermDays} дней от начала инвестиции)` 
+          : `Bonus will be available in ${daysLeft} days (${halfTermDays} days from investment start required)`
+      )
+      return
+    }
+
+
+    // ✅ Все проверки пройдены — открываем модальное окно
+    setSelectedInvestment(investment)
+    setShowWithdrawBonusModal(true)
+    setTrc20Address('')
+    setWithdrawError('')
+    setWithdrawSuccess('')
+  }
+
+
+  const handleCloseActionModals = () => {
+    setShowWithdrawModal(false)
+    setShowUpgradeModal(false)
+    setShowEarlyWithdrawModal(false)
+    setShowPartialWithdrawModal(false)
+    setShowWithdrawBonusModal(false)
+    setSelectedInvestment(null)
+    setTrc20Address('')
+    setWithdrawError('')
+    setWithdrawSuccess('')
+    setUpgradeError('')
+    setUpgradeSuccess('')
+    
+    fetchUserInvestments()
+  }
+
+
+  const handleSubmitWithdrawal = async (e) => {
+    e.preventDefault()
+    setWithdrawError('')
+    setWithdrawSuccess('')
+
+
+    if (!trc20Address || !validateTRC20Address(trc20Address)) {
+      setWithdrawError(t.invalidAddress)
+      return
+    }
+
+
+    setSubmitting(true)
+
+
+    try {
+      const token = localStorage.getItem('access_token')
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/investments/${selectedInvestment.id}/withdraw`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          trc20Address: trc20Address.trim()
+        })
+      })
+
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to submit withdrawal')
+      }
+
+
+      setWithdrawSuccess(t.withdrawRequested)
+      
+      setTimeout(() => {
+        handleCloseActionModals()
+      }, 2000)
+
+
+    } catch (error) {
+      console.error('Withdrawal error:', error)
+      setWithdrawError(error.message || t.errorOccurred)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+
+  const handleSubmitUpgrade = async (upgradeData) => {
+    setUpgradeError('')
+    setUpgradeSuccess('')
+
+
+    const { upgradeType, newPackage, additionalAmount, newDuration, senderWalletAddress } = upgradeData
+
+
+    if (upgradeType === 'amount') {
+      if (!newPackage || !additionalAmount) {
+        setUpgradeError(t.selectTargetPlan || 'Please select target plan and amount')
+        return null
+      }
+
+
+      if (additionalAmount <= 0) {
+        setUpgradeError(t.invalidAmount || 'Invalid amount')
+        return null
+      }
+
+
+      if (!senderWalletAddress || senderWalletAddress.trim() === '') {
+        setUpgradeError(t.senderWalletRequired || 'Sender wallet address is required')
+        return null
+      }
+
+
+      if (!validateTRC20Address(senderWalletAddress.trim())) {
+        setUpgradeError(t.invalidTrc20Address || 'Invalid TRC-20 address')
+        return null
+      }
+    }
+
+
+    if (upgradeType === 'duration') {
+      if (!newDuration) {
+        setUpgradeError(t.selectNewDuration || 'Please select new duration')
+        return null
+      }
+
+
+      if (newDuration <= selectedInvestment.duration) {
+        setUpgradeError(t.invalidDuration || 'New duration must be greater than current')
+        return null
+      }
+    }
+
+
+    setSubmitting(true)
+
+
+    try {
+      const token = localStorage.getItem('access_token')
+      
+      const requestBody = {
+        upgradeType,
+        paymentMethod: 'telegram'
+      }
+
+
+      if (upgradeType === 'amount') {
+        requestBody.newPackage = newPackage
+        requestBody.additionalAmount = additionalAmount
+        requestBody.senderWalletAddress = senderWalletAddress.trim()
+      } else if (upgradeType === 'duration') {
+        requestBody.newDuration = newDuration
+        requestBody.senderWalletAddress = ''
+      }
+
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/investments/${selectedInvestment.id}/upgrade`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody)
+      })
+
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to submit upgrade')
+      }
+
+
+      const result = await response.json()
+      
+      setUpgradeSuccess(t.telegramBotInstructions || 'Request created successfully')
+      
+      return result
+
+
+    } catch (error) {
+      console.error('Upgrade error:', error)
+      setUpgradeError(error.message || t.errorOccurred)
+      return null
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+
+  const handleSubmitEarlyWithdraw = async (e) => {
+    e.preventDefault()
+    setWithdrawError('')
+    setWithdrawSuccess('')
+
+
+    if (!trc20Address || !validateTRC20Address(trc20Address)) {
+      setWithdrawError(t.invalidAddress)
+      return null
+    }
+
+
+    const daysPassed = selectedInvestment.daysPassed || 0
+    if (daysPassed > 30) {
+      setWithdrawError(t.earlyWithdrawNotAvailable)
+      return null
+    }
+
+
+    setSubmitting(true)
+
+
+    try {
+      const token = localStorage.getItem('access_token')
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/investments/${selectedInvestment.id}/early-withdraw`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          trc20Address: trc20Address.trim()
+        })
+      })
+
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to submit early withdrawal')
+      }
+
+
+      const result = await response.json()
+      
+      const botUsername = 'dxcapital_bot'
+      const earlyWithdrawalId = result.data?.earlyWithdrawalId || result.data?.id
+      const botLink = `https://t.me/${botUsername}?start=early_${earlyWithdrawalId}`
+      
+      setWithdrawSuccess(t.telegramBotInstructions || 'Request created successfully')
+      
+      return {
+        success: true,
+        botLink: botLink,
+        withdrawalId: earlyWithdrawalId
+      }
+
+
+    } catch (error) {
+      console.error('Early withdrawal error:', error)
+      setWithdrawError(error.message || t.errorOccurred)
+      return null
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+
+  const handleSubmitPartialWithdraw = async (e, withdrawType, customAmount) => {
+    console.log('🚀 handleSubmitPartialWithdraw CALLED:', {
+      withdrawType,
+      customAmount,
+      selectedInvestment: selectedInvestment.id,
+      availableProfit: selectedInvestment.availableProfit
+    })
+
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    
+    setWithdrawError('')
+    setWithdrawSuccess('')
+
+    if (!trc20Address || !validateTRC20Address(trc20Address)) {
+      setWithdrawError(t.invalidAddress || 'Invalid TRC-20 address')
+      return null
+    }
+
+    if (!withdrawType || !['profit', 'bonus'].includes(withdrawType)) {
+      setWithdrawError('Invalid withdrawal type')
+      return null
+    }
+
+    // ✅ ОПРЕДЕЛЯЕМ СУММУ ВЫВОДА
+    let amountToWithdraw = 0
+
+    if (withdrawType === 'profit') {
+      console.log('💰 PROFIT withdrawal:', { customAmount })
+      
+      amountToWithdraw = parseFloat(customAmount)
+      
+      console.log('💵 Amount to withdraw:', amountToWithdraw)
+      
+      if (!amountToWithdraw || amountToWithdraw <= 0) {
+        console.error('❌ Invalid amount:', amountToWithdraw)
+        setWithdrawError(t.invalidAmount || 'Invalid amount')
+        return null
+      }
+
+      const availableProfit = selectedInvestment.availableProfit || 0
+      console.log('📊 Available profit:', availableProfit)
+      
+      if (amountToWithdraw > availableProfit) {
+        console.error('❌ Insufficient profit:', { amountToWithdraw, availableProfit })
+        setWithdrawError(t.insufficientProfit || 'Insufficient profit')
+        return null
+      }
+    } else if (withdrawType === 'bonus') {
+      console.log('🎁 BONUS withdrawal')
+      
+      const termBonus = getDurationBonus(
+        selectedInvestment.duration,
+        parseFloat(selectedInvestment.amount)
+      )
+      
+      console.log('🎁 Calculated bonus:', termBonus)
+      
+      amountToWithdraw = termBonus
+
+      if (termBonus <= 0) {
+        console.error('❌ No bonus available')
+        setWithdrawError(t.noBonusAvailable || 'No bonus available')
+        return null
+      }
+
+      const isBonusUnlocked = selectedInvestment.isBonusUnlocked || 
+        (selectedInvestment.bonusUnlockedAt && new Date(selectedInvestment.bonusUnlockedAt) <= new Date())
+      const isBonusWithdrawn = selectedInvestment.bonusWithdrawn
+
+      if (!isBonusUnlocked) {
+        console.error('❌ Bonus not unlocked')
+        setWithdrawError(t.bonusNotUnlocked || 'Bonus is not yet unlocked')
+        return null
+      }
+
+      if (isBonusWithdrawn) {
+        console.error('❌ Bonus already withdrawn')
+        setWithdrawError(t.bonusAlreadyWithdrawn || 'Bonus already withdrawn')
+        return null
+      }
+    }
+
+    console.log('📦 REQUEST BODY:', {
+      amount: amountToWithdraw,
+      trc20Address: trc20Address.trim(),
+      withdrawType: withdrawType
+    })
+
+    setSubmitting(true)
+
+    try {
+      const token = localStorage.getItem('access_token')
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/investments/${selectedInvestment.id}/partial-withdraw`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          amount: amountToWithdraw,
+          trc20Address: trc20Address.trim(),
+          withdrawType: withdrawType
+        })
+      })
+
+      console.log('📡 Response status:', response.status)
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error('❌ Server error:', errorData)
+        throw new Error(errorData.error || 'Failed to submit withdrawal')
+      }
+
+      const result = await response.json()
+      console.log('✅ Server response:', result)
+
+      const botUsername = 'dxcapital_bot'
+      const withdrawalId = result.data?.withdrawalId || result.withdrawalId || result.data?.id
+      const botLink = result.botLink || `https://t.me/${botUsername}?start=partial_${withdrawalId}`
+      
+      setWithdrawSuccess(t.telegramBotInstructions || 'Withdrawal request created successfully')
+      
+      return {
+        success: true,
+        botLink: botLink,
+        withdrawalId: withdrawalId
+      }
+
+    } catch (error) {
+      console.error('❌ Partial withdrawal error:', error)
+      setWithdrawError(error.message || t.errorOccurred)
+      return null
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+
+
+  // ✅ HANDLER ДЛЯ ОТПРАВКИ ЗАПРОСА ВЫВОДА БОНУСА (ИСПРАВЛЕН)
+  const handleSubmitWithdrawBonus = async (address) => {
+    try {
+      console.log('🚀 handleSubmitWithdrawBonus called')
+      
+      // 1. Проверка токена
+      const token = localStorage.getItem('access_token')
+      if (!token) {
+        alert(language === 'ru' ? 'Требуется авторизация' : 'Authorization required')
+        setTimeout(() => window.location.href = '/login', 2000)
+        return { success: false }
+      }
+
+
+      // 2. ✅ ПРАВИЛЬНЫЙ РАСЧЁТ БОНУСА С АРГУМЕНТАМИ
+      const termBonus = getDurationBonus(
+        selectedInvestment.duration,
+        parseFloat(selectedInvestment.amount)
+      )
+
+
+      console.log('💰 Calculated bonus:', {
+        duration: selectedInvestment.duration,
+        amount: selectedInvestment.amount,
+        termBonus
+      })
+
+
+      if (termBonus <= 0) {
+        alert(language === 'ru' ? 'Бонус недоступен для данной инвестиции' : 'No bonus available for this investment')
+        return { success: false }
+      }
+
+
+      // 3. Формирование URL
+      const url = `${API_BASE_URL}/api/v1/investments/${selectedInvestment.id}/partial-withdraw`
+      console.log('📍 Request URL:', url)
+
+
+      // 4. Формирование тела запроса
+      const requestBody = {
+        trc20Address: address,
+        withdrawType: 'bonus'
+      }
+      console.log('📦 Request body:', requestBody)
+
+
+      // 5. Отправка запроса
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody)
+      })
+
+
+      console.log('📊 Response status:', response.status)
+
+
+      // 6. Обработка 401
+      if (response.status === 401) {
+        alert(language === 'ru' ? 'Сессия истекла. Войдите заново.' : 'Session expired. Please log in again.')
+        localStorage.removeItem('access_token')
+        setTimeout(() => window.location.href = '/login', 2000)
+        return { success: false }
+      }
+
+
+      // 7. Обработка других ошибок
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`)
+      }
+
+
+      // 8. Успешный ответ
+      const data = await response.json()
+      console.log('✅ Server response:', data)
+
+
+      // 9. Обновление списка инвестиций
+      await fetchUserInvestments()
+
+
+      return {
+        success: true,
+        data: data.data || data
+      }
+
+
+    } catch (error) {
+      console.error('❌ Bonus withdrawal error:', error)
+      alert(`${language === 'ru' ? 'Ошибка' : 'Error'}: ${error.message}`)
+      return { success: false }
+    }
+  }
+
+
+  const handleOpenAccount = (plan) => {
+    if (!kycChecked) {
+      setError(language === 'ru' ? 'Проверка статуса верификации...' : 'Checking verification status...')
+      return
+    }
+
+
+    if (userKYCStatus !== 'APPROVED') {
+      setSelectedPlan(plan)
+      setShowKYCModal(true)
+      return
+    }
+
+
+    setSelectedPlan(plan)
+    setShowInvestForm(true)
+    setShowPaymentStep(false)
+    setShowConfirmationStep(false)
+    setError('')
+    setSuccess('')
+    setPendingInvestmentId(null)
+    setSelectedDuration(3)
+    setSenderWalletAddress('')
+    setInvestAmount('')
+    setMaxAmountWarning(false)
+    setAdminWalletAddress('')
+  }
+
+
+  const handleKYCSubmitted = () => {
+    setShowKYCModal(false)
+    checkKYCStatus()
+    setSuccess(language === 'ru' 
+      ? 'Ваши документы отправлены на проверку. Вы сможете открыть инвестицию после одобрения.'
+      : 'Your documents have been submitted for review. You will be able to open an investment after approval.')
+  }
+
+
+  const handleAmountChange = (e) => {
+    const value = e.target.value
+    
+    if (value === '') {
+      setInvestAmount('')
+      setMaxAmountWarning(false)
+      setError('')
+      return
+    }
+
+
+    const numValue = parseFloat(value)
+
+
+    if (isNaN(numValue)) {
+      return
+    }
+
+
+    if (selectedPlan && numValue > selectedPlan.maxAmount) {
+      setInvestAmount(selectedPlan.maxAmount.toString())
+      setMaxAmountWarning(true)
+      setError('')
+      
+      setTimeout(() => {
+        setMaxAmountWarning(false)
+      }, 2500)
+    } else {
+      setInvestAmount(value)
+      setMaxAmountWarning(false)
+      setError('')
+    }
+  }
+
+
+  const calculateReturns = () => {
+    if (!investAmount || !selectedPlan || !selectedDuration) return null
+
+
+    const amount = parseFloat(investAmount)
+    const baseMonthlyRate = selectedPlan.roi
+    const durationBonus = DURATION_BONUSES[selectedDuration]
+    
+    const hasBonusAccess = amount >= 500
+    
+    const effectiveRateBonus = durationBonus.rateBonus
+    
+    let effectiveCashBonus = 0
+    if (hasBonusAccess && selectedDuration !== 3) {
+      if (amount >= 1000) {
+        effectiveCashBonus = durationBonus.cashBonus1000 || 0
+      } else if (amount >= 500) {
+        effectiveCashBonus = durationBonus.cashBonus500 || 0
+      }
+    }
+    
+    const effectiveMonthlyRate = baseMonthlyRate + effectiveRateBonus
+    const interestReturn = (amount * effectiveMonthlyRate * durationBonus.months) / 100
+    const totalReturn = amount + interestReturn + effectiveCashBonus
+
+
+    return {
+      baseRate: baseMonthlyRate,
+      effectiveRate: effectiveMonthlyRate,
+      interestReturn: interestReturn.toFixed(2),
+      cashBonus: effectiveCashBonus.toFixed(2),
+      totalReturn: totalReturn.toFixed(2),
+      durationMonths: durationBonus.months,
+      hasCashBonus: effectiveCashBonus > 0,
+      hasBonusAccess,
+      rateBonus: effectiveRateBonus
+    }
+  }
+
+
+  const submitInvestment = async (e) => {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+
+
+    const amount = parseFloat(investAmount)
+
+
+    if (!selectedPlan) {
+      setError(t.planRequired)
+      return
+    }
+
+
+    if (!amount || amount <= 0) {
+      setError(t.amountRequired)
+      return
+    }
+
+
+    if (!selectedDuration) {
+      setError(t.durationRequired)
+      return
+    }
+
+
+    if (amount < selectedPlan.minAmount) {
+      setError(t.amountTooLow)
+      return
+    }
+
+
+    if (amount > selectedPlan.maxAmount) {
+      setError(t.amountTooHigh)
+      return
+    }
+
+
+    if (!senderWalletAddress || senderWalletAddress.trim() === '') {
+      setError(t.senderWalletRequired)
+      return
+    }
+
+
+    if (!validateTRC20Address(senderWalletAddress.trim())) {
+      setError(t.invalidTrc20Address)
+      return
+    }
+
+
+    setLoading(true)
+
+
+    try {
+      const token = localStorage.getItem('access_token')
+
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/investments/create`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          planId: selectedPlan.id,
+          amount: amount,
+          duration: selectedDuration,
+          walletAddress: senderWalletAddress.trim(),
+          paymentMethod: 'telegram',
+          language: language || 'en'
+        })
+      })
+
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create investment')
+      }
+
+
+      const result = await response.json()
+
+
+      const investmentId = result.data?.investmentId || result.data?.id
+      const adminWallet = result.data?.adminWallet
+
+
+      if (!investmentId) {
+        throw new Error('Investment ID not received from server')
+      }
+
+
+      if (!adminWallet) {
+        throw new Error('Admin wallet address not received from server')
+      }
+
+
+      setPendingInvestmentId(investmentId)
+      setAdminWalletAddress(adminWallet)
+      setShowPaymentStep(true)
+
+
+    } catch (error) {
+      console.error('Investment error:', error)
+      setError(error.message || 'An error occurred. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+
+  const handleConfirmTransfer = async () => {
+    if (!pendingInvestmentId) {
+      setError('Investment ID is missing')
+      return
+    }
+
+
+    setLoading(true)
+    setError('')
+
+
+    try {
+      const token = localStorage.getItem('access_token')
+
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/investments/${pendingInvestmentId}/confirm-payment`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({})
+      })
+
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to confirm payment')
+      }
+
+
+      setShowPaymentStep(false)
+      setShowConfirmationStep(true)
+
+
+    } catch (error) {
+      console.error('Confirmation error:', error)
+      setError(error.message || 'An error occurred. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+
+  const handleCloseModal = () => {
+    setShowInvestForm(false)
+    setShowPaymentStep(false)
+    setShowConfirmationStep(false)
+    setInvestAmount('')
+    setSelectedDuration(3)
+    setSenderWalletAddress('')
+    setSelectedPlan(null)
+    setError('')
+    setSuccess('')
+    setPendingInvestmentId(null)
+    setAdminWalletAddress('')
+    setMaxAmountWarning(false)
+    fetchUserInvestments()
+  }
+
+
+  const handleCopyAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(adminWalletAddress)
+      setSuccess(t.addressCopied)
+      setTimeout(() => setSuccess(''), 2000)
+    } catch (err) {
+      console.error('Failed to copy address:', err)
+    }
+  }
+
+
+  const returns = calculateReturns()
+
+
+  const getCurrentStep = () => {
+    if (showConfirmationStep) return 3
+    if (showPaymentStep) return 2
+    return 1
+  }
+
+
+  if (plansLoading) {
+    return (
+      <div style={{
+        textAlign: 'center',
+        padding: isMobile ? '32px 20px' : '48px',
+        color: 'rgba(255, 255, 255, 0.6)',
+        fontSize: isMobile ? '14px' : '15px'
+      }}>
+        {t.loading}...
+      </div>
+    )
+  }
+
+
+  return (
+    <>
+      <style jsx>{`
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+
+
+        input[type="number"] {
+          -moz-appearance: textfield;
+          appearance: textfield;
+        }
+
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
+        .spinner {
+          animation: spin 1s linear infinite;
+        }
+      `}</style>
+
+
+      <div>
+        {/* ✅ БЛОК "ИНВЕСТИЦИОННЫЕ ПЛАНЫ" ПЕРЕНЕСЁН ВВЕРХ */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: isMobile ? '20px' : '28px',
+          flexWrap: 'wrap',
+          gap: '16px'
+        }}>
+          <h2 style={{
+            fontSize: isMobile ? '20px' : '26px',
+            fontWeight: '600',
+            color: '#ffffff',
+            letterSpacing: '-0.8px',
+            margin: 0
+          }}>
+            {t.investmentPlans}
+          </h2>
+        </div>
+
+
+        {investmentPlans && investmentPlans.length > 0 ? (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: isMobile ? '12px' : '16px',
+            marginBottom: isMobile ? '32px' : '40px'
+          }}>
+            {investmentPlans.map((plan) => (
+              <div
+                key={plan.id}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  backdropFilter: 'blur(16px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: isMobile ? '24px' : '32px',
+                  padding: isMobile ? '18px 20px' : '22px 24px',
+                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)'
+                  e.currentTarget.style.borderColor = 'rgba(45, 212, 191, 0.4)'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'
+                }}
+              >
+                <div style={{
+                  position: 'absolute',
+                  top: '-40%',
+                  right: '-30%',
+                  width: '150px',
+                  height: '150px',
+                  background: 'radial-gradient(circle, rgba(45, 212, 191, 0.1) 0%, transparent 70%)',
+                  filter: 'blur(30px)',
+                  pointerEvents: 'none',
+                  zIndex: 0
+                }} />
+
+
+                <div style={{ position: 'relative', zIndex: 1 }}>
+                  <h3 style={{
+                    fontSize: isMobile ? '16px' : '18px',
+                    fontWeight: '600',
+                    color: '#ffffff',
+                    marginBottom: '12px',
+                    letterSpacing: '-0.5px'
+                  }}>
+                    {plan.name}
+                  </h3>
+
+
+                  <div style={{
+                    fontSize: isMobile ? '28px' : '32px',
+                    fontWeight: '600',
+                    color: '#2dd4bf',
+                    marginBottom: '16px',
+                    letterSpacing: '-1.5px'
+                  }}>
+                    {plan.roi}%
+                  </div>
+
+
+                  <div style={{
+                    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                    paddingTop: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    marginBottom: '16px'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: isMobile ? '11px' : '12px',
+                      color: 'rgba(255, 255, 255, 0.6)'
+                    }}>
+                      <span>{t.minimumAmount}:</span>
+                      <span style={{ color: '#2dd4bf', fontWeight: '500' }}>
+                        ${plan.minAmount?.toLocaleString()}
+                      </span>
+                    </div>
+
+
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: isMobile ? '11px' : '12px',
+                      color: 'rgba(255, 255, 255, 0.6)'
+                    }}>
+                      <span>{t.maximumAmount}:</span>
+                      <span style={{ color: '#2dd4bf', fontWeight: '500' }}>
+                        ${plan.maxAmount?.toLocaleString()}
+                      </span>
+                    </div>
+
+
+                    <div style={{
+                      fontSize: isMobile ? '10px' : '11px',
+                      color: 'rgba(255, 255, 255, 0.5)',
+                      fontStyle: 'italic',
+                      marginTop: '4px'
+                    }}>
+                      {t.chooseDuration}
+                    </div>
+                  </div>
+
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleOpenAccount(plan)
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: isMobile ? '10px 16px' : '12px 20px',
+                      background: 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
+                      border: 'none',
+                      borderRadius: '14px',
+                      color: '#000000',
+                      fontSize: isMobile ? '13px' : '14px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s',
+                      letterSpacing: '-0.3px',
+                      boxShadow: '0 4px 12px rgba(45, 212, 191, 0.3)'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.03)'
+                      e.currentTarget.style.boxShadow = '0 6px 18px rgba(45, 212, 191, 0.5)'
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)'
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(45, 212, 191, 0.3)'
+                    }}
+                  >
+                    {t.selectButton}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{
+            textAlign: 'center',
+            padding: isMobile ? '32px 20px' : '48px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: isMobile ? '20px' : '24px',
+            color: 'rgba(255, 255, 255, 0.4)',
+            fontSize: isMobile ? '13px' : '14px',
+            marginBottom: isMobile ? '32px' : '40px'
+          }}>
+            {t.noPlans}
+          </div>
+        )}
+
+
+        {/* ✅ БЛОК "ВАШИ СЧЕТА" ТЕПЕРЬ НИЖЕ */}
+        {userInvestments && userInvestments.length > 0 && (
+          <div style={{ marginBottom: isMobile ? '20px' : '28px' }}>
+            <h3 style={{
+              fontSize: isMobile ? '18px' : '22px',
+              fontWeight: '600',
+              color: '#ffffff',
+              marginBottom: isMobile ? '16px' : '20px',
+              letterSpacing: '-0.6px'
+            }}>
+              {t.yourInvestments}
+            </h3>
+
+
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: isMobile ? '12px' : '16px'
+            }}>
+              {userInvestments.map((investment) => (
+                <InvestmentCard
+                  key={investment.id}
+                  investment={investment}
+                  packages={packages}
+                  durationBonuses={DURATION_BONUSES}
+                  onWithdraw={handleWithdrawClick}
+                  onPartialWithdraw={handlePartialWithdrawClick}
+                  onEarlyWithdraw={handleEarlyWithdrawClick}
+                  onWithdrawBonus={handleWithdrawBonusClick}
+                  t={t}
+                  isMobile={isMobile}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+
+        {success && (
+          <div style={{
+            background: 'rgba(45, 212, 191, 0.15)',
+            border: '1px solid rgba(45, 212, 191, 0.3)',
+            borderRadius: isMobile ? '16px' : '20px',
+            padding: isMobile ? '12px 16px' : '16px 20px',
+            marginBottom: isMobile ? '20px' : '28px',
+            color: '#2dd4bf',
+            fontSize: isMobile ? '13px' : '14px',
+            letterSpacing: '-0.3px'
+          }}>
+            {success}
+          </div>
+        )}
+
+
+        {error && (
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            borderRadius: isMobile ? '16px' : '20px',
+            padding: isMobile ? '12px 16px' : '16px 20px',
+            marginBottom: isMobile ? '20px' : '28px',
+            color: 'rgba(255, 255, 255, 0.7)',
+            fontSize: isMobile ? '13px' : '14px',
+            letterSpacing: '-0.3px'
+          }}>
+            {error}
+          </div>
+        )}
+
+
+        {/* ОСТ Alnyе MODALS И ФУНКЦИОНАЛ БЕЗ ИЗМЕНЕНИЙ */}
+        {/* ... (весь остальной код с модалками остаётся прежним) ... */}
+        
+        {/* ACTION MODALS */}
+        {showWithdrawModal && selectedInvestment && (
+          <WithdrawModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitWithdrawal}
+            trc20Address={trc20Address}
+            setTrc20Address={setTrc20Address}
+            error={withdrawError}
+            success={withdrawSuccess}
+            submitting={submitting}
+            durationBonuses={DURATION_BONUSES}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+
+        {showUpgradeModal && selectedInvestment && (
+          <UpgradeModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitUpgrade}
+            error={upgradeError}
+            success={upgradeSuccess}
+            submitting={submitting}
+            packages={packages}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+
+        {showEarlyWithdrawModal && selectedInvestment && (
+          <EarlyWithdrawModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitEarlyWithdraw}
+            trc20Address={trc20Address}
+            setTrc20Address={setTrc20Address}
+            error={withdrawError}
+            success={withdrawSuccess}
+            submitting={submitting}
+            packages={packages}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+
+        {showPartialWithdrawModal && selectedInvestment && (
+          <PartialWithdrawModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitPartialWithdraw}
+            trc20Address={trc20Address}
+            setTrc20Address={setTrc20Address}
+            error={withdrawError}
+            success={withdrawSuccess}
+            submitting={submitting}
+            packages={packages}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+
+        {/* ✅ НОВЫЙ MODAL ДЛЯ ВЫВОДА БОНУСА */}
+        {showWithdrawBonusModal && selectedInvestment && (
+          <WithdrawBonusModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitWithdrawBonus}
+            trc20Address={trc20Address}
+            setTrc20Address={setTrc20Address}
+            error={withdrawError}
+            success={withdrawSuccess}
+            submitting={submitting}
+            durationBonuses={DURATION_BONUSES}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+
+        <KYCModal 
+          isOpen={showKYCModal}
+          onClose={() => setShowKYCModal(false)}
+          userEmail={user?.email}
+          userName={user?.name || user?.username}
+          currentStatus={userKYCStatus}
+          onKYCSubmitted={handleKYCSubmitted}
+          language={language}
+        />
+
+
+        {/* INVEST FORM MODAL (полностью сохраняется без изменений) */}
+        {showInvestForm && selectedPlan && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(20px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }} onClick={(e) => {
+            if (showConfirmationStep) {
+              handleCloseModal()
+            }
+          }}>
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.95)',
+              backdropFilter: 'blur(30px)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '32px',
+              padding: isMobile ? '28px 20px' : '36px 32px',
+              maxWidth: '500px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              position: 'relative'
+            }} onClick={(e) => e.stopPropagation()}>
+              
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '24px'
+              }}>
+                <div style={{
+                  fontSize: isMobile ? '11px' : '12px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  letterSpacing: '-0.3px'
+                }}>
+                  {t.step} {getCurrentStep()} {t.of} 3
+                </div>
+
+                <button
+                  onClick={handleCloseModal}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '50%',
+                    transition: 'all 0.3s'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                    e.currentTarget.style.color = '#ffffff'
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = 'none'
+                    e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {showConfirmationStep ? (
+                <div>
+                  <div style={{
+                    textAlign: 'center',
+                    marginBottom: '24px'
+                  }}>
+                    <div style={{
+                      width: '56px',
+                      height: '56px',
+                      margin: '0 auto 16px',
+                      background: 'rgba(45, 212, 191, 0.15)',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <div style={{
+                        width: '28px',
+                        height: '28px',
+                        border: '3px solid #2dd4bf',
+                        borderTop: '3px solid transparent',
+                        borderRadius: '50%'
+                      }} className="spinner"></div>
+                    </div>
+                    
+                    <h2 style={{
+                      fontSize: isMobile ? '22px' : '26px',
+                      fontWeight: '600',
+                      color: '#ffffff',
+                      marginBottom: '8px',
+                      letterSpacing: '-0.8px'
+                    }}>
+                      {t.pendingConfirmation}
+                    </h2>
+                    
+                    <p style={{
+                      margin: '0',
+                      fontSize: isMobile ? '13px' : '14px',
+                      color: 'rgba(255, 255, 255, 0.7)',
+                      letterSpacing: '-0.3px'
+                    }}>
+                      {t.supportWillReview}
+                    </p>
+                  </div>
+
+                  {returns && (
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.12) 0%, rgba(20, 184, 166, 0.08) 100%)',
+                      border: '1px solid rgba(45, 212, 191, 0.25)',
+                      borderRadius: '20px',
+                      padding: isMobile ? '20px' : '24px',
+                      marginBottom: '24px'
+                    }}>
+                      <h3 style={{
+                        fontSize: isMobile ? '14px' : '15px',
+                        fontWeight: '600',
+                        color: '#ffffff',
+                        marginBottom: '16px',
+                        letterSpacing: '-0.4px'
+                      }}>
+                        {t.investmentDetails}
+                      </h3>
+                      
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span style={{
+                            fontSize: isMobile ? '12px' : '13px',
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.investedAmount}:
+                          </span>
+                          <span style={{
+                            fontSize: isMobile ? '15px' : '16px',
+                            fontWeight: '600',
+                            color: '#ffffff',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            ${parseFloat(investAmount).toLocaleString()}
+                          </span>
+                        </div>
+
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span style={{
+                            fontSize: isMobile ? '12px' : '13px',
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.plan}:
+                          </span>
+                          <span style={{
+                            fontSize: isMobile ? '13px' : '14px',
+                            fontWeight: '500',
+                            color: 'rgba(255, 255, 255, 0.9)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {selectedPlan.name}
+                          </span>
+                        </div>
+
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span style={{
+                            fontSize: isMobile ? '12px' : '13px',
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.duration}:
+                          </span>
+                          <span style={{
+                            fontSize: isMobile ? '13px' : '14px',
+                            fontWeight: '500',
+                            color: 'rgba(255, 255, 255, 0.9)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {selectedDuration} {t.months}
+                          </span>
+                        </div>
+
+                        <div style={{
+                          height: '1px',
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          margin: '4px 0'
+                        }} />
+
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span style={{
+                            fontSize: isMobile ? '12px' : '13px',
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.baseRate}:
+                          </span>
+                          <span style={{
+                            fontSize: isMobile ? '13px' : '14px',
+                            fontWeight: '500',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {returns.baseRate}%
+                          </span>
+                        </div>
+
+                        {returns.rateBonus > 0 && (
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <span style={{
+                              fontSize: isMobile ? '12px' : '13px',
+                              color: 'rgba(255, 255, 255, 0.6)',
+                              letterSpacing: '-0.3px'
+                            }}>
+                              {t.rateBonus}:
+                            </span>
+                            <span style={{
+                              fontSize: isMobile ? '13px' : '14px',
+                              fontWeight: '600',
+                              color: '#2dd4bf',
+                              letterSpacing: '-0.3px'
+                            }}>
+                              +{returns.rateBonus}%
+                            </span>
+                          </div>
+                        )}
+
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span style={{
+                            fontSize: isMobile ? '12px' : '13px',
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.effectiveRate}:
+                          </span>
+                          <span style={{
+                            fontSize: isMobile ? '13px' : '14px',
+                            fontWeight: '600',
+                            color: '#2dd4bf',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {returns.effectiveRate}%
+                          </span>
+                        </div>
+
+                        {returns.hasCashBonus && (
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <span style={{
+                              fontSize: isMobile ? '12px' : '13px',
+                              color: 'rgba(255, 255, 255, 0.6)',
+                              letterSpacing: '-0.3px'
+                            }}>
+                              {t.cashBonus}:
+                            </span>
+                            <span style={{
+                              fontSize: isMobile ? '13px' : '14px',
+                              fontWeight: '600',
+                              color: '#2dd4bf',
+                              letterSpacing: '-0.3px'
+                            }}>
+                              ${returns.cashBonus}
+                            </span>
+                          </div>
+                        )}
+
+                        <div style={{
+                          height: '1px',
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          margin: '4px 0'
+                        }} />
+
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span style={{
+                            fontSize: isMobile ? '12px' : '13px',
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.expectedReturn}:
+                          </span>
+                          <span style={{
+                            fontSize: isMobile ? '13px' : '14px',
+                            fontWeight: '500',
+                            color: 'rgba(255, 255, 255, 0.9)',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            ${returns.interestReturn}
+                          </span>
+                        </div>
+
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '12px 0 4px 0'
+                        }}>
+                          <span style={{
+                            fontSize: isMobile ? '13px' : '14px',
+                            fontWeight: '600',
+                            color: '#ffffff',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.totalReturn}:
+                          </span>
+                          <span style={{
+                            fontSize: isMobile ? '16px' : '18px',
+                            fontWeight: '700',
+                            color: '#2dd4bf',
+                            letterSpacing: '-0.5px'
+                          }}>
+                            ${returns.totalReturn}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleCloseModal}
+                    style={{
+                      width: '100%',
+                      padding: isMobile ? '14px' : '16px',
+                      background: 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
+                      border: 'none',
+                      borderRadius: '16px',
+                      color: '#000000',
+                      fontSize: isMobile ? '14px' : '15px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s',
+                      letterSpacing: '-0.3px'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.02)'
+                      e.currentTarget.style.boxShadow = '0 8px 20px rgba(45, 212, 191, 0.4)'
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)'
+                      e.currentTarget.style.boxShadow = 'none'
+                    }}
+                  >
+                    {t.close}
+                  </button>
+                </div>
+              ) : showPaymentStep ? (
+                <div>
+                  <h2 style={{
+                    fontSize: isMobile ? '20px' : '24px',
+                    fontWeight: '600',
+                    color: '#ffffff',
+                    marginBottom: '8px',
+                    letterSpacing: '-0.8px'
+                  }}>
+                    {t.transferInstructions}
+                  </h2>
+
+                  <div style={{
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: isMobile ? '12px' : '13px',
+                    marginBottom: '24px',
+                    letterSpacing: '-0.3px'
+                  }}>
+                    {selectedPlan.name}
+                  </div>
+
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '16px',
+                    padding: isMobile ? '16px' : '20px',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{
+                      fontSize: isMobile ? '11px' : '12px',
+                      color: 'rgba(255, 255, 255, 0.6)',
+                      marginBottom: '4px',
+                      letterSpacing: '-0.3px'
+                    }}>
+                      {t.amountToTransfer}
+                    </div>
+                    <div style={{
+                      fontSize: isMobile ? '24px' : '28px',
+                      fontWeight: '600',
+                      color: '#2dd4bf',
+                      marginBottom: '16px',
+                      letterSpacing: '-1px'
+                    }}>
+                      ${parseFloat(investAmount).toLocaleString()}
+                    </div>
+
+                    <div style={{
+                      fontSize: isMobile ? '11px' : '12px',
+                      color: 'rgba(255, 255, 255, 0.6)',
+                      marginBottom: '8px',
+                      letterSpacing: '-0.3px'
+                    }}>
+                      {t.adminWalletLabel}
+                    </div>
+
+                    <div style={{
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'center'
+                    }}>
+                      <div style={{
+                        flex: 1,
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        borderRadius: '12px',
+                        padding: isMobile ? '10px 12px' : '12px 14px',
+                        color: '#ffffff',
+                        fontSize: isMobile ? '11px' : '12px',
+                        fontFamily: 'monospace',
+                        wordBreak: 'break-all',
+                        letterSpacing: '-0.3px'
+                      }}>
+                        {adminWalletAddress}
+                      </div>
+
+                      <button
+                        onClick={handleCopyAddress}
+                        style={{
+                          padding: isMobile ? '10px 14px' : '12px 16px',
+                          background: 'rgba(45, 212, 191, 0.15)',
+                          border: '1px solid rgba(45, 212, 191, 0.3)',
+                          borderRadius: '12px',
+                          color: '#2dd4bf',
+                          fontSize: isMobile ? '11px' : '12px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s',
+                          letterSpacing: '-0.3px',
+                          whiteSpace: 'nowrap'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.background = 'rgba(45, 212, 191, 0.25)'
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.background = 'rgba(45, 212, 191, 0.15)'
+                        }}
+                      >
+                        {t.copyAddress}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '16px',
+                    padding: isMobile ? '14px 16px' : '16px 20px',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{
+                      fontSize: isMobile ? '12px' : '13px',
+                      color: 'rgba(255, 255, 255, 0.7)',
+                      lineHeight: '1.6',
+                      letterSpacing: '-0.3px'
+                    }}>
+                      <div style={{ marginBottom: '8px' }}>1. {t.transferStep1}</div>
+                      <div style={{ marginBottom: '8px' }}>2. {t.transferStep2}</div>
+                      <div>3. {t.transferStep3}</div>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: '12px',
+                      padding: isMobile ? '8px 12px' : '10px 14px',
+                      marginBottom: '16px',
+                      color: 'rgba(255, 255, 255, 0.7)',
+                      fontSize: isMobile ? '11px' : '12px',
+                      letterSpacing: '-0.3px'
+                    }}>
+                      {error}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={handleConfirmTransfer}
+                      disabled={loading}
+                      style={{
+                        flex: 1,
+                        minWidth: '120px',
+                        padding: isMobile ? '12px' : '14px',
+                        background: loading
+                          ? 'rgba(45, 212, 191, 0.3)' 
+                          : 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
+                        border: 'none',
+                        borderRadius: '16px',
+                        color: loading ? 'rgba(0, 0, 0, 0.5)' : '#000000',
+                        fontSize: isMobile ? '13px' : '14px',
+                        fontWeight: '600',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.3s',
+                        letterSpacing: '-0.3px'
+                      }}
+                    >
+                      {loading ? t.loading : t.confirmTransfer}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleCloseModal}
+                      style={{
+                        padding: isMobile ? '12px 20px' : '14px 24px',
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        borderRadius: '16px',
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        fontSize: isMobile ? '13px' : '14px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s',
+                        letterSpacing: '-0.3px'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'
+                        e.currentTarget.style.color = '#ffffff'
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                        e.currentTarget.style.color = 'rgba(255, 255, 255, 0.8)'
+                      }}
+                    >
+                      {t.cancel}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h2 style={{
+                    fontSize: isMobile ? '20px' : '24px',
+                    fontWeight: '600',
+                    color: '#ffffff',
+                    marginBottom: '8px',
+                    letterSpacing: '-0.8px'
+                  }}>
+                    {selectedPlan.name}
+                  </h2>
+
+                  <div style={{
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: isMobile ? '12px' : '13px',
+                    marginBottom: '24px',
+                    letterSpacing: '-0.3px'
+                  }}>
+                    {t.baseRate}: {selectedPlan.roi}%
+                  </div>
+
+                  <form onSubmit={submitInvestment}>
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{
+                        display: 'block',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        fontSize: isMobile ? '12px' : '13px',
+                        fontWeight: '500',
+                        marginBottom: '8px',
+                        letterSpacing: '-0.3px'
+                      }}>
+                        {t.enterAmount}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={selectedPlan.minAmount}
+                        max={selectedPlan.maxAmount}
+                        value={investAmount}
+                        onChange={handleAmountChange}
+                        placeholder={`${selectedPlan.minAmount} - ${selectedPlan.maxAmount}`}
+                        required
+                        style={{
+                          width: '100%',
+                          padding: isMobile ? '12px 16px' : '14px 18px',
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          border: maxAmountWarning 
+                            ? '2px solid rgba(45, 212, 191, 0.6)' 
+                            : '1px solid rgba(255, 255, 255, 0.15)',
+                          borderRadius: '16px',
+                          color: '#ffffff',
+                          fontSize: isMobile ? '14px' : '15px',
+                          outline: 'none',
+                          transition: 'all 0.3s',
+                          letterSpacing: '-0.3px',
+                          boxSizing: 'border-box',
+                          WebkitAppearance: 'none',
+                          MozAppearance: 'textfield',
+                          appearance: 'textfield'
+                        }}
+                        onFocus={(e) => {
+                          if (!maxAmountWarning) {
+                            e.target.style.borderColor = 'rgba(45, 212, 191, 0.5)'
+                          }
+                          e.target.style.background = 'rgba(0, 0, 0, 0.4)'
+                        }}
+                        onBlur={(e) => {
+                          if (!maxAmountWarning) {
+                            e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)'
+                          }
+                          e.target.style.background = 'rgba(0, 0, 0, 0.3)'
+                        }}
+                      />
+                      
+                      {maxAmountWarning && (
+                        <div style={{
+                          marginTop: '8px',
+                          padding: '8px 12px',
+                          background: 'rgba(45, 212, 191, 0.15)',
+                          border: '1px solid rgba(45, 212, 191, 0.3)',
+                          borderRadius: '10px',
+                          color: '#2dd4bf',
+                          fontSize: isMobile ? '11px' : '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}>
+                          <span>{t.maxAmountReached}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{
+                        display: 'block',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        fontSize: isMobile ? '12px' : '13px',
+                        fontWeight: '500',
+                        marginBottom: '12px',
+                        letterSpacing: '-0.3px'
+                      }}>
+                        {t.selectDuration}
+                      </label>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {Object.entries(DURATION_BONUSES).map(([months, bonus]) => {
+                          const amount = parseFloat(investAmount) || 0
+                          const showBonus500 = months !== '3' && amount >= 500 && amount < 1000
+                          const showBonus1000 = months !== '3' && amount >= 1000
+                          
+                          return (
+                            <div
+                              key={months}
+                              onClick={() => setSelectedDuration(parseInt(months))}
+                              style={{
+                                background: selectedDuration === parseInt(months)
+                                  ? 'rgba(45, 212, 191, 0.15)'
+                                  : 'rgba(255, 255, 255, 0.05)',
+                                border: selectedDuration === parseInt(months)
+                                  ? '2px solid rgba(45, 212, 191, 0.5)'
+                                  : '2px solid rgba(255, 255, 255, 0.1)',
+                                borderRadius: '16px',
+                                padding: '16px',
+                                cursor: 'pointer',
+                                transition: 'all 0.3s'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                <span style={{
+                                  color: '#ffffff',
+                                  fontSize: isMobile ? '14px' : '15px',
+                                  fontWeight: '600'
+                                }}>
+                                  {bonus.label}
+                                </span>
+                                {selectedDuration === parseInt(months) && (
+                                  <div style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    borderRadius: '50%',
+                                    background: '#2dd4bf',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '12px',
+                                    color: '#000000',
+                                    fontWeight: 'bold'
+                                  }}>
+                                    ✓
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{
+                                color: 'rgba(255, 255, 255, 0.6)',
+                                fontSize: isMobile ? '11px' : '12px'
+                              }}>
+                                {bonus.description}
+                              </div>
+                              {showBonus500 && (
+                                <div style={{
+                                  marginTop: '8px',
+                                  fontSize: isMobile ? '11px' : '12px',
+                                  color: '#2dd4bf',
+                                  fontWeight: '500'
+                                }}>
+                                  {bonus.cashBonusLabel500}
+                                </div>
+                              )}
+                              {showBonus1000 && (
+                                <div style={{
+                                  marginTop: '8px',
+                                  fontSize: isMobile ? '11px' : '12px',
+                                  color: '#2dd4bf',
+                                  fontWeight: '500'
+                                }}>
+                                  {bonus.cashBonusLabel1000}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: '20px' }}>
+                      <label style={{
+                        display: 'block',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        fontSize: isMobile ? '12px' : '13px',
+                        fontWeight: '500',
+                        marginBottom: '8px',
+                        letterSpacing: '-0.3px'
+                      }}>
+                        {t.senderWalletLabel}
+                      </label>
+                      <input
+                        type="text"
+                        value={senderWalletAddress}
+                        onChange={(e) => setSenderWalletAddress(e.target.value)}
+                        placeholder={t.senderWalletPlaceholder}
+                        required
+                        style={{
+                          width: '100%',
+                          padding: isMobile ? '12px 16px' : '14px 18px',
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          border: '1px solid rgba(255, 255, 255, 0.15)',
+                          borderRadius: '16px',
+                          color: '#ffffff',
+                          fontSize: isMobile ? '13px' : '14px',
+                          outline: 'none',
+                          transition: 'all 0.3s',
+                          letterSpacing: '-0.3px',
+                          boxSizing: 'border-box',
+                          fontFamily: 'monospace'
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.borderColor = 'rgba(45, 212, 191, 0.5)'
+                          e.target.style.background = 'rgba(0, 0, 0, 0.4)'
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)'
+                          e.target.style.background = 'rgba(0, 0, 0, 0.3)'
+                        }}
+                      />
+                      <div style={{
+                        color: 'rgba(255, 255, 255, 0.4)',
+                        fontSize: isMobile ? '10px' : '11px',
+                        marginTop: '6px',
+                        letterSpacing: '-0.3px'
+                      }}>
+                        {t.walletHint}
+                      </div>
+                    </div>
+
+                    {returns && (
+                      <div style={{
+                        background: 'rgba(45, 212, 191, 0.08)',
+                        border: '1px solid rgba(45, 212, 191, 0.2)',
+                        borderRadius: '16px',
+                        padding: isMobile ? '14px 16px' : '16px 20px',
+                        marginBottom: '20px'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginBottom: '8px'
+                        }}>
+                          <span style={{ 
+                            color: 'rgba(255, 255, 255, 0.6)', 
+                            fontSize: isMobile ? '11px' : '12px',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.baseRate}
+                          </span>
+                          <span style={{ 
+                            color: 'rgba(255, 255, 255, 0.8)', 
+                            fontSize: isMobile ? '12px' : '13px', 
+                            fontWeight: '600',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {returns.baseRate}%
+                          </span>
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginBottom: '8px'
+                        }}>
+                          <span style={{ 
+                            color: 'rgba(255, 255, 255, 0.6)', 
+                            fontSize: isMobile ? '11px' : '12px',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.effectiveRate}
+                          </span>
+                          <span style={{ 
+                            color: '#2dd4bf', 
+                            fontSize: isMobile ? '12px' : '13px', 
+                            fontWeight: '600',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {returns.effectiveRate}%
+                          </span>
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginBottom: '8px'
+                        }}>
+                          <span style={{ 
+                            color: 'rgba(255, 255, 255, 0.6)', 
+                            fontSize: isMobile ? '11px' : '12px',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.interestReturn}
+                          </span>
+                          <span style={{ 
+                            color: 'rgba(255, 255, 255, 0.8)', 
+                            fontSize: isMobile ? '12px' : '13px', 
+                            fontWeight: '600',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            ${returns.interestReturn}
+                          </span>
+                        </div>
+                        {returns.hasCashBonus && (
+                          <>
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              marginBottom: '8px'
+                            }}>
+                              <span style={{ 
+                                color: 'rgba(255, 255, 255, 0.6)', 
+                                fontSize: isMobile ? '11px' : '12px',
+                                letterSpacing: '-0.3px'
+                              }}>
+                                {t.cashBonus}
+                              </span>
+                              <span style={{ 
+                                color: 'rgba(255, 255, 255, 0.8)', 
+                                fontSize: isMobile ? '12px' : '13px', 
+                                fontWeight: '600',
+                                letterSpacing: '-0.3px'
+                              }}>
+                                ${returns.cashBonus}
+                              </span>
+                            </div>
+                            <div style={{
+                              fontSize: isMobile ? '10px' : '11px',
+                              color: 'rgba(255, 255, 255, 0.4)',
+                              marginBottom: '12px',
+                              fontStyle: 'italic'
+                            }}>
+                              {t.bonusNote}
+                            </div>
+                          </>
+                        )}
+                        <div style={{
+                          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                          paddingTop: '8px',
+                          display: 'flex',
+                          justifyContent: 'space-between'
+                        }}>
+                          <span style={{ 
+                            color: '#ffffff', 
+                            fontSize: isMobile ? '12px' : '13px',
+                            fontWeight: '600',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            {t.totalWithBonus}
+                          </span>
+                          <span style={{ 
+                            color: '#2dd4bf', 
+                            fontSize: isMobile ? '13px' : '14px', 
+                            fontWeight: '700',
+                            letterSpacing: '-0.3px'
+                          }}>
+                            ${returns.totalReturn}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {error && (
+                      <div style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        borderRadius: '12px',
+                        padding: isMobile ? '8px 12px' : '10px 14px',
+                        marginBottom: '16px',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        fontSize: isMobile ? '11px' : '12px',
+                        letterSpacing: '-0.3px'
+                      }}>
+                        {error}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                      <button
+                        type="submit"
+                        disabled={loading || !investAmount || !selectedDuration || !senderWalletAddress}
+                        style={{
+                          flex: 1,
+                          minWidth: '120px',
+                          padding: isMobile ? '12px' : '14px',
+                          background: (loading || !investAmount || !selectedDuration || !senderWalletAddress)
+                            ? 'rgba(45, 212, 191, 0.3)' 
+                            : 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
+                          border: 'none',
+                          borderRadius: '16px',
+                          color: (loading || !investAmount || !selectedDuration || !senderWalletAddress)
+                            ? 'rgba(0, 0, 0, 0.5)' 
+                            : '#000000',
+                          fontSize: isMobile ? '13px' : '14px',
+                          fontWeight: '600',
+                          cursor: (loading || !investAmount || !selectedDuration || !senderWalletAddress)
+                            ? 'not-allowed' 
+                            : 'pointer',
+                          transition: 'all 0.3s',
+                          letterSpacing: '-0.3px'
+                        }}
+                        onMouseOver={(e) => {
+                          if (!loading && investAmount && selectedDuration && senderWalletAddress) {
+                            e.currentTarget.style.transform = 'scale(1.02)'
+                            e.currentTarget.style.boxShadow = '0 8px 16px rgba(45, 212, 191, 0.3)'
+                          }
+                        }}
+                        onMouseOut={(e) => {
+                          if (!loading && investAmount && selectedDuration) {
+                            e.currentTarget.style.transform = 'scale(1)'
+                            e.currentTarget.style.boxShadow = 'none'
+                          }
+                        }}
+                      >
+                        {loading ? t.loading : t.openInvestment}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleCloseModal}
+                        style={{
+                          padding: isMobile ? '12px 20px' : '14px 24px',
+                          background: 'rgba(255, 255, 255, 0.08)',
+                          border: '1px solid rgba(255, 255, 255, 0.15)',
+                          borderRadius: '16px',
+                          color: 'rgba(255, 255, 255, 0.8)',
+                          fontSize: isMobile ? '13px' : '14px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s',
+                          letterSpacing: '-0.3px'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'
+                          e.currentTarget.style.color = '#ffffff'
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                          e.currentTarget.style.color = 'rgba(255, 255, 255, 0.8)'
+                        }}
+                      >
+                        {t.cancel}
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ACTION MODALS */}
+        {showWithdrawModal && selectedInvestment && (
+          <WithdrawModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitWithdrawal}
+            trc20Address={trc20Address}
+            setTrc20Address={setTrc20Address}
+            error={withdrawError}
+            success={withdrawSuccess}
+            submitting={submitting}
+            durationBonuses={DURATION_BONUSES}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+        {showUpgradeModal && selectedInvestment && (
+          <UpgradeModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitUpgrade}
+            error={upgradeError}
+            success={upgradeSuccess}
+            submitting={submitting}
+            packages={packages}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+        {showEarlyWithdrawModal && selectedInvestment && (
+          <EarlyWithdrawModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitEarlyWithdraw}
+            trc20Address={trc20Address}
+            setTrc20Address={setTrc20Address}
+            error={withdrawError}
+            success={withdrawSuccess}
+            submitting={submitting}
+            packages={packages}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+        {showPartialWithdrawModal && selectedInvestment && (
+          <PartialWithdrawModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitPartialWithdraw}
+            trc20Address={trc20Address}
+            setTrc20Address={setTrc20Address}
+            error={withdrawError}
+            success={withdrawSuccess}
+            submitting={submitting}
+            packages={packages}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+        {/* ✅ НОВЫЙ MODAL ДЛЯ ВЫВОДА БОНУСА */}
+        {showWithdrawBonusModal && selectedInvestment && (
+          <WithdrawBonusModal
+            investment={selectedInvestment}
+            onClose={handleCloseActionModals}
+            onSubmit={handleSubmitWithdrawBonus}
+            trc20Address={trc20Address}
+            setTrc20Address={setTrc20Address}
+            error={withdrawError}
+            success={withdrawSuccess}
+            submitting={submitting}
+            durationBonuses={DURATION_BONUSES}
+            t={t}
+            isMobile={isMobile}
+          />
+        )}
+
+        <KYCModal 
+          isOpen={showKYCModal}
+          onClose={() => setShowKYCModal(false)}
+          userEmail={user?.email}
+          userName={user?.name || user?.username}
+          currentStatus={userKYCStatus}
+          onKYCSubmitted={handleKYCSubmitted}
+          language={language}
+        />
+      </div>
+    </>
+  )
+}

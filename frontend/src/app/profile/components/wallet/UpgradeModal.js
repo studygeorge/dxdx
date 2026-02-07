@@ -64,6 +64,14 @@ const UpgradeModal = ({
   const [activationDate, setActivationDate] = useState(null);
   const [daysUntilActivation, setDaysUntilActivation] = useState(0);
 
+  // Early return if no investment
+  if (!investment) return null;
+
+  // 🔧 IMPORTANT: Declare these BEFORE useEffect that depends on them
+  const currentAmount = parseFloat(investment.amount || 0);
+  const currentDuration = investment.duration || 3;
+  const currentPackageName = investment.planName;
+
   useEffect(() => {
     setCurrentStep(1);
     setDurationUpgradeSuccess(false);
@@ -88,12 +96,6 @@ const UpgradeModal = ({
       setDaysUntilActivation(0);
     }
   }, [selectedTargetPackage, investment?.planName, selectedDuration, currentDuration]);
-
-  if (!investment) return null;
-
-  const currentAmount = parseFloat(investment.amount || 0);
-  const currentDuration = investment.duration || 3;
-  const currentPackageName = investment.planName;
 
   const allPackages = [
     { name: 'Starter', baseROI: 14, min: 100, max: 999 },

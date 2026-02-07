@@ -91,46 +91,34 @@ export default function ProfileLayout({ isMobile }) {
   }
 
   const handleLogout = async () => {
+    console.log('🚪 Starting instant logout...')
+    
+    // Step 1: INSTANT redirect (не ждём ничего!)
+    window.location.href = '/'
+    
+    // Step 2: Clear localStorage immediately (выполнится перед редиректом)
+    localStorage.clear()
+    console.log('✅ LocalStorage cleared + instant redirect initiated')
+    
+    // Step 3: Background cleanup (выполнится после редиректа, но не блокирует UI)
     try {
-      console.log('🚪 Starting full logout...')
-      
-      try {
-        await authAPI.logout()
-        console.log('✅ API logout successful')
-      } catch (error) {
-        console.error('❌ API logout error:', error)
-      }
-      
-      localStorage.clear()
-      console.log('✅ LocalStorage cleared')
-      
-      if (typeof window !== 'undefined' && window.ethereum) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_revokePermissions',
-            params: [{ eth_accounts: {} }]
-          })
-          console.log('✅ MetaMask permissions revoked')
-        } catch (err) {
-          console.log('ℹ️ Could not revoke MetaMask permissions')
-        }
-      }
-      
-      console.log('🔄 Redirecting to home page...')
-      router.push('/')
-      
-      setTimeout(() => {
-        window.location.href = '/'
-      }, 100)
-      
+      await authAPI.logout()
+      console.log('✅ API logout successful')
     } catch (error) {
-      console.error('❌ Logout error:', error)
-      
-      localStorage.clear()
-      router.push('/')
-      setTimeout(() => {
-        window.location.href = '/'
-      }, 100)
+      console.error('❌ API logout error (non-critical):', error)
+    }
+    
+    // Step 4: Revoke MetaMask (также в фоне)
+    if (typeof window !== 'undefined' && window.ethereum) {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_revokePermissions',
+          params: [{ eth_accounts: {} }]
+        })
+        console.log('✅ MetaMask permissions revoked')
+      } catch (err) {
+        console.log('ℹ️ Could not revoke MetaMask permissions')
+      }
     }
   }
 

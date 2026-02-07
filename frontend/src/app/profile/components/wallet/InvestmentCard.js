@@ -403,9 +403,25 @@ export default function InvestmentCard({
               fontSize: isMobile ? '14px' : '16px',
               fontWeight: '600',
               color: '#ffffff',
-              letterSpacing: '-0.5px'
+              letterSpacing: '-0.5px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
             }}>
               {investment.planName}
+              {!hasPendingUpgrade && !investment.pendingUpgrade && (
+                <span style={{
+                  fontSize: isMobile ? '11px' : '12px',
+                  fontWeight: '600',
+                  color: '#2dd4bf',
+                  background: 'rgba(45, 212, 191, 0.15)',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(45, 212, 191, 0.3)'
+                }}>
+                  {currentROI}% APY
+                </span>
+              )}
             </div>
             
             <div style={{

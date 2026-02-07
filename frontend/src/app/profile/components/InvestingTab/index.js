@@ -1166,6 +1166,7 @@ export default function InvestingTab({
             onSuccess={refreshInvestments}
             t={t}
             isMobile={isMobile}
+            language={language}
           />
         )}
 

@@ -1,13 +1,15 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useReinvest } from '../hooks/useReinvest'
+import { getActivationHintText, formatActivationDate, getDaysUntilActivation } from '../utils/roiActivation'
 
 const ReinvestModal = ({ 
   investment, 
   onClose, 
   onSuccess,
   t,
-  isMobile 
+  isMobile,
+  language = 'en'
 }) => {
   const [currentStep, setCurrentStep] = useState(1)
   const [reinvestAmount, setReinvestAmount] = useState('')
@@ -529,9 +531,37 @@ const ReinvestModal = ({
               <div style={{
                 fontSize: '11px',
                 color: 'rgba(255, 255, 255, 0.7)',
-                lineHeight: '1.6'
+                lineHeight: '1.6',
+                marginBottom: '8px'
               }}>
                 ℹ️ {t.reinvestNote || 'Your profit will be added to your investment amount. No bonus is applied during reinvestment. If the new amount reaches a higher plan threshold, your package will be automatically upgraded.'}
+              </div>
+              
+              {/* NEW: Activation date info */}
+              <div style={{
+                fontSize: '12px',
+                color: willUpgrade ? '#2dd4bf' : 'rgba(255, 255, 255, 0.8)',
+                lineHeight: '1.6',
+                marginTop: '8px',
+                padding: '8px 12px',
+                background: willUpgrade ? 'rgba(45, 212, 191, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '8px',
+                border: willUpgrade ? '1px solid rgba(45, 212, 191, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)'
+              }}>
+                {willUpgrade ? '📅 ' : '📅 '}
+                {getActivationHintText(new Date(), language)}
+                {willUpgrade && (
+                  <div style={{ 
+                    fontSize: '10px', 
+                    marginTop: '4px',
+                    color: 'rgba(45, 212, 191, 0.8)'
+                  }}>
+                    {language === 'ru' 
+                      ? `До этой даты будет начисляться ${currentROI}% на $${currentAmount.toFixed(2)}`
+                      : `Until this date, ${currentROI}% will be earned on $${currentAmount.toFixed(2)}`
+                    }
+                  </div>
+                )}
               </div>
             </div>
 

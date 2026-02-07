@@ -49,8 +49,28 @@ export default function InvestmentCard({
     ? getDaysUntilActivation(pendingUpgradeActivationDate) 
     : 0
 
+  // 🆕 Reinvest данные
+  const hasRecentReinvest = !!(investment.lastReinvestAt || investment.reinvestedAt)
+  const reinvestActivationDate = hasRecentReinvest && investment.roiActivationDate
+    ? new Date(investment.roiActivationDate)
+    : null
+  const daysUntilReinvestActivation = reinvestActivationDate
+    ? getDaysUntilActivation(reinvestActivationDate)
+    : 0
+  const reinvestedAmount = parseFloat(investment.reinvestedAmount || investment.lastReinvestedAmount || 0)
+
   // 🆕 Текущий ROI (до активации) и новый ROI (после активации)
-  const currentROI = investment.roi || investment.effectiveROI || 0
+  // Учитываем бонус длительности
+  const getDurationROIBonus = () => {
+    const duration = investment.duration
+    if (duration === 6) return 1.5
+    if (duration === 12) return 3
+    return 0
+  }
+  
+  const baseROI = investment.roi || investment.effectiveROI || 0
+  const durationROIBonus = getDurationROIBonus()
+  const currentROI = baseROI + durationROIBonus
   const newROI = hasPendingUpgrade ? investment.pendingUpgrade.newROI : null
 
   const getDurationBonus = () => {
@@ -296,6 +316,113 @@ export default function InvestmentCard({
               lineHeight: '1.4'
             }}>
               💡 {t.upgradeExplanation || 'New interest rate will apply from the 15th or 30th of each month after the upgrade is confirmed.'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 REINVEST BANNER - показывает что был реинвест и когда активируется новый ROI */}
+      {!hasPendingUpgrade && hasRecentReinvest && reinvestActivationDate && daysUntilReinvestActivation > 0 && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.2) 0%, rgba(20, 184, 166, 0.15) 100%)',
+          border: '1px solid rgba(45, 212, 191, 0.4)',
+          borderRadius: '12px',
+          padding: '14px 18px',
+          marginBottom: '14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: '#2dd4bf',
+              animation: 'pulse 2s infinite'
+            }} />
+            <div style={{
+              fontSize: '13px',
+              fontWeight: '700',
+              color: '#2dd4bf',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              💰 {t.reinvestActivation || 'Profit Reinvested'}
+            </div>
+          </div>
+          
+          <div style={{
+            fontSize: '12px',
+            color: 'rgba(255, 255, 255, 0.9)',
+            lineHeight: '1.6'
+          }}>
+            {/* Реинвестированная сумма */}
+            {reinvestedAmount > 0 && (
+              <div style={{
+                background: 'rgba(45, 212, 191, 0.15)',
+                border: '1px solid rgba(45, 212, 191, 0.3)',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                marginBottom: '8px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '14px' }}>📈</span>
+                  <strong style={{ color: '#2dd4bf' }}>{t.reinvestedAmount || 'Reinvested'}: ${reinvestedAmount.toFixed(2)}</strong>
+                </div>
+                <div style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '11px' }}>
+                  {t.newTotalAmount || 'New total amount'}: <strong>${investedAmount.toFixed(2)}</strong>
+                </div>
+              </div>
+            )}
+
+            {/* Дата активации нового ROI */}
+            <div style={{
+              background: 'rgba(45, 212, 191, 0.1)',
+              border: '1px solid rgba(45, 212, 191, 0.25)',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              marginBottom: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '14px' }}>📅</span>
+                <strong style={{ color: '#2dd4bf' }}>{t.newROIActivation || 'New ROI Activation'}</strong>
+              </div>
+              <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '11px' }}>
+                {t.currentROI || 'Current'}: <strong style={{ color: '#2dd4bf' }}>{currentROI}% APY</strong>
+              </div>
+              <div style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '11px', marginTop: '2px' }}>
+                {t.activatesOn || 'Activates on'}: <strong>{reinvestActivationDate.toLocaleDateString('ru-RU')}</strong>
+              </div>
+            </div>
+
+            {/* Обратный отсчёт */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 12px',
+              background: 'rgba(45, 212, 191, 0.08)',
+              borderRadius: '6px',
+              border: '1px solid rgba(45, 212, 191, 0.2)'
+            }}>
+              <span style={{ fontSize: '16px' }}>⏰</span>
+              <span style={{ fontWeight: '700', color: '#2dd4bf', fontSize: '13px' }}>
+                {daysUntilReinvestActivation === 0 
+                  ? (t.activatingToday || '🎉 Activates today!')
+                  : `${daysUntilReinvestActivation} ${t.daysUntilActivation || 'days until activation'}`}
+              </span>
+            </div>
+
+            {/* Пояснение */}
+            <div style={{
+              fontSize: '10px',
+              color: 'rgba(255, 255, 255, 0.6)',
+              marginTop: '8px',
+              fontStyle: 'italic',
+              lineHeight: '1.4'
+            }}>
+              💡 {t.reinvestExplanation || 'Interest will be calculated on the new amount starting from the 15th or 30th (28th in February) of the month.'}
             </div>
           </div>
         </div>

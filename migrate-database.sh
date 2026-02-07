@@ -20,14 +20,8 @@ cd "$BACKEND" || exit 1
 echo "✅ Current directory: $(pwd)"
 echo ""
 
-# Step 2: Pull latest code
-echo "📥 Step 2: Pulling latest code from origin/main..."
-git pull origin main
-echo "✅ Code updated"
-echo ""
-
-# Step 3: Install dependencies (if needed)
-echo "📦 Step 3: Checking dependencies..."
+# Step 2: Install dependencies (if needed)
+echo "📦 Step 2: Checking dependencies..."
 if [ -f "package.json" ]; then
   npm install
   echo "✅ Dependencies installed"
@@ -36,33 +30,33 @@ else
 fi
 echo ""
 
-# Step 4: Generate Prisma Client
-echo "🔧 Step 4: Generating Prisma Client..."
+# Step 3: Generate Prisma Client
+echo "🔧 Step 3: Generating Prisma Client..."
 npx prisma generate
 echo "✅ Prisma Client generated"
 echo ""
 
-# Step 5: Apply migrations
-echo "🚀 Step 5: Applying database migrations..."
+# Step 4: Apply migrations
+echo "🚀 Step 4: Applying database migrations..."
 echo "⚠️  This will modify the production database!"
 echo "⏳ Applying migrations..."
 npx prisma migrate deploy
 echo "✅ Migrations applied successfully"
 echo ""
 
-# Step 6: Check migration status
-echo "📊 Step 6: Checking migration status..."
+# Step 5: Check migration status
+echo "📊 Step 5: Checking migration status..."
 npx prisma migrate status
 echo ""
 
-# Step 7: Restart backend service
-echo "🔄 Step 7: Restarting backend service..."
+# Step 6: Restart backend service
+echo "🔄 Step 6: Restarting backend service..."
 pm2 restart dxcapai-backend
 echo "✅ Backend service restarted"
 echo ""
 
-# Step 8: Check backend logs
-echo "📋 Step 8: Backend logs (last 20 lines)..."
+# Step 7: Check backend logs
+echo "📋 Step 7: Backend logs (last 20 lines)..."
 pm2 logs dxcapai-backend --lines 20 --nostream
 echo ""
 

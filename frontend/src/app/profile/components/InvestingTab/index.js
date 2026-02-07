@@ -51,9 +51,6 @@ export default function InvestingTab({
   const [upgradeSuccess, setUpgradeSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // ✅ НОВОЕ СОСТОЯНИЕ: Модалка реинвестирования
-  const [showReinvestModal, setShowReinvestModal] = useState(false)
-
   // Хуки
   const { userInvestments, refreshInvestments } = useInvestments(user)
   const { userKYCStatus, kycChecked, refreshKYCStatus } = useKYC(user)
@@ -491,7 +488,7 @@ export default function InvestingTab({
     }
 
     setSelectedInvestment(investment)
-    setShowReinvestModal(true)
+    modals.setShowReinvestModal(true)
   }
 
   const handleCloseActionModals = () => {
@@ -500,7 +497,7 @@ export default function InvestingTab({
     modals.setShowEarlyWithdrawModal(false)
     modals.setShowPartialWithdrawModal(false)
     modals.setShowWithdrawBonusModal(false)
-    setShowReinvestModal(false) // ✅ ДОБАВЛЕНО
+    modals.setShowReinvestModal(false)
     setSelectedInvestment(null)
     setTrc20Address('')
     setWithdrawError('')
@@ -1159,7 +1156,7 @@ export default function InvestingTab({
         )}
 
         {/* ✅ НОВАЯ МОДАЛКА: Реинвестирование */}
-        {showReinvestModal && selectedInvestment && (
+        {modals.showReinvestModal && selectedInvestment && (
           <ReinvestModal
             investment={selectedInvestment}
             onClose={handleCloseActionModals}

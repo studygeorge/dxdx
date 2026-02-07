@@ -50,6 +50,7 @@ export default function KYCModal({
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(true)
+  const [showSuccessScreen, setShowSuccessScreen] = useState(false)
 
   const translations = {
     en: {
@@ -80,7 +81,12 @@ export default function KYCModal({
       loading: 'Loading...',
       photoUploaded: 'Photo uploaded successfully',
       videoUploaded: 'Video uploaded successfully. Under review.',
-      startOver: 'Start Over'
+      startOver: 'Start Over',
+      
+      successTitle: 'Congratulations!',
+      successMessage: 'Your documents have been submitted for review.',
+      successSubtext: 'You will be able to access all features after approval.',
+      successButton: 'Got it!'
     },
     ru: {
       title: 'KYC Верификация',
@@ -110,7 +116,12 @@ export default function KYCModal({
       loading: 'Загрузка...',
       photoUploaded: 'Фото успешно загружено',
       videoUploaded: 'Видео успешно загружено. На проверке.',
-      startOver: 'Начать заново'
+      startOver: 'Начать заново',
+      
+      successTitle: 'Поздравляем!',
+      successMessage: 'Ваши документы отправлены на проверку.',
+      successSubtext: 'Все функции будут доступны после одобрения.',
+      successButton: 'Понятно!'
     }
   }
 
@@ -255,11 +266,13 @@ export default function KYCModal({
 
       if (response.ok) {
         const data = await response.json()
-        setSuccess(t.videoUploaded)
         
         const newStatus = data.data?.kycStatus || 'PENDING'
         setKycStatus(newStatus)
         setKycVideoUrl(data.data?.kycVideoUrl)
+        
+        // Show success screen instead of alert
+        setShowSuccessScreen(true)
         
         if (onKYCSubmitted) {
           onKYCSubmitted(newStatus)
@@ -350,6 +363,146 @@ export default function KYCModal({
   }
 
   if (!isOpen) return null
+
+  // Success Screen after video upload
+  if (showSuccessScreen) {
+    return (
+      <div 
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(20px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          padding: isMobile ? '16px' : '20px'
+        }}
+        onClick={() => {
+          setShowSuccessScreen(false)
+          onClose()
+        }}
+      >
+        <div 
+          style={{
+            background: 'rgba(0, 0, 0, 0.95)',
+            backdropFilter: 'blur(30px)',
+            border: '1px solid rgba(45, 212, 191, 0.3)',
+            borderRadius: isMobile ? '20px' : '24px',
+            padding: isMobile ? '32px 24px' : '40px 32px',
+            maxWidth: '420px',
+            width: '100%',
+            textAlign: 'center',
+            boxShadow: '0 0 60px rgba(45, 212, 191, 0.25)'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Success Icon */}
+          <div style={{
+            width: '80px',
+            height: '80px',
+            margin: '0 auto 24px',
+            background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.2) 0%, rgba(20, 184, 166, 0.2) 100%)',
+            border: '2px solid rgba(45, 212, 191, 0.4)',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'pulse 2s ease-in-out infinite',
+            boxShadow: '0 0 30px rgba(45, 212, 191, 0.3)'
+          }}>
+            <div style={{
+              fontSize: '40px',
+              color: '#2dd4bf'
+            }}>
+              ✓
+            </div>
+          </div>
+
+          {/* Success Title */}
+          <h2 style={{
+            fontSize: isMobile ? '22px' : '24px',
+            fontWeight: '700',
+            color: '#ffffff',
+            margin: '0 0 12px',
+            letterSpacing: '-0.02em'
+          }}>
+            {t.successTitle}
+          </h2>
+
+          {/* Success Message */}
+          <p style={{
+            fontSize: isMobile ? '15px' : '16px',
+            color: 'rgba(255, 255, 255, 0.9)',
+            margin: '0 0 8px',
+            lineHeight: '1.5',
+            fontWeight: '500'
+          }}>
+            {t.successMessage}
+          </p>
+
+          {/* Success Subtext */}
+          <p style={{
+            fontSize: isMobile ? '13px' : '14px',
+            color: 'rgba(255, 255, 255, 0.6)',
+            margin: '0 0 28px',
+            lineHeight: '1.6'
+          }}>
+            {t.successSubtext}
+          </p>
+
+          {/* Got it Button */}
+          <button
+            onClick={() => {
+              setShowSuccessScreen(false)
+              onClose()
+            }}
+            style={{
+              width: '100%',
+              padding: '14px 24px',
+              background: 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: '#000000',
+              fontSize: '15px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              boxShadow: '0 0 30px rgba(45, 212, 191, 0.4)',
+              transition: 'all 0.3s',
+              letterSpacing: '0.02em'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'scale(1.02)'
+              e.target.style.boxShadow = '0 0 40px rgba(45, 212, 191, 0.6)'
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'scale(1)'
+              e.target.style.boxShadow = '0 0 30px rgba(45, 212, 191, 0.4)'
+            }}
+          >
+            {t.successButton}
+          </button>
+        </div>
+
+        <style jsx>{`
+          @keyframes pulse {
+            0%, 100% {
+              transform: scale(1);
+              box-shadow: 0 0 30px rgba(45, 212, 191, 0.3);
+            }
+            50% {
+              transform: scale(1.05);
+              box-shadow: 0 0 40px rgba(45, 212, 191, 0.5);
+            }
+          }
+        `}</style>
+      </div>
+    )
+  }
 
   if (showCamera && captureMode) {
     return (

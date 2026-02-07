@@ -545,7 +545,23 @@ export default function ReferralTab({ isMobile, language, user }) {
       setWithdrawError('')
       setWithdrawSuccess('')
 
-      const response = await fetch('https://dxcapital-ai.com/api/v1/referrals/reinvest', {
+      // Get user's first active investment for reinvest
+      const investmentsResponse = await fetch('https://dxcapital-ai.com/api/v1/investments', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'include'
+      })
+      
+      const investmentsData = await investmentsResponse.json()
+      const activeInvestment = investmentsData.data?.find(inv => inv.status === 'ACTIVE')
+      
+      if (!activeInvestment) {
+        setWithdrawError(language === 'ru' ? 'Нет активных инвестиций для реинвестирования' : 'No active investments for reinvestment')
+        return { success: false }
+      }
+
+      const response = await fetch('https://dxcapital-ai.com/api/v1/referrals/reinvest-to-investment', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -553,7 +569,7 @@ export default function ReferralTab({ isMobile, language, user }) {
         },
         credentials: 'include',
         body: JSON.stringify({
-          amount: referralData.totalEarnings
+          investmentId: activeInvestment.id
         })
       })
 

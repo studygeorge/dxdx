@@ -316,6 +316,12 @@ model Investment {
   upgradeActivationDate DateTime?
   upgradeRequestDate    DateTime?
   
+  // 🆕 РЕИНВЕСТИРОВАНИЕ (активация 15-го/30-го/28-го февраля)
+  lastReinvestAt        DateTime?
+  reinvestedAmount      Decimal?  @db.Decimal(18, 2)
+  roiActivationDate     DateTime?
+  previousROI           Decimal?  @db.Decimal(5, 2)
+  
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   

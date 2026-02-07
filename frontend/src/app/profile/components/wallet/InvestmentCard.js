@@ -61,16 +61,9 @@ export default function InvestmentCard({
 
   // 🆕 Текущий ROI (до активации) и новый ROI (после активации)
   // Учитываем бонус длительности
-  const getDurationROIBonus = () => {
-    const duration = investment.duration
-    if (duration === 6) return 1.5
-    if (duration === 12) return 3
-    return 0
-  }
-  
-  const baseROI = investment.roi || investment.effectiveROI || 0
-  const durationROIBonus = getDurationROIBonus()
-  const currentROI = baseROI + durationROIBonus
+  // ✅ Backend уже возвращает effectiveROI с учётом duration bonus
+  // НЕ добавляем бонус повторно!
+  const currentROI = Number(investment.effectiveROI || investment.roi || 0)
   const newROI = hasPendingUpgrade ? investment.pendingUpgrade.newROI : null
 
   const getDurationBonus = () => {

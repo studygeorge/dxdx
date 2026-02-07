@@ -12,7 +12,8 @@ export default function NavigationDesktop({
   language,
   onLanguageToggle,
   onBack,
-  t
+  t,
+  isAnyModalOpen
 }) {
   return (
     <nav style={{
@@ -22,10 +23,12 @@ export default function NavigationDesktop({
       bottom: 0,
       width: '280px',
       padding: '24px 16px',
-      zIndex: 1000,
+      zIndex: isAnyModalOpen ? -1 : 1000,
       overflowY: 'visible',
       overflowX: 'visible',
-      pointerEvents: 'none'
+      pointerEvents: 'none',
+      opacity: isAnyModalOpen ? 0 : 1,
+      transition: 'opacity 0.3s ease, z-index 0s linear 0.3s'
     }}>
       <div style={{
         marginBottom: '36px',
@@ -204,17 +207,6 @@ export default function NavigationDesktop({
                   ))}
                 </>
               )}
-              <span style={{
-                fontSize: '18px',
-                minWidth: '24px',
-                textAlign: 'center',
-                filter: isDisabled 
-                  ? 'grayscale(100%) opacity(0.3)' 
-                  : (isActive || isUpgrade ? 'drop-shadow(0 0 8px currentColor)' : 'none'),
-                transition: 'all 0.3s'
-              }}>
-                {tab.emoji}
-              </span>
               {tab.label}
               {(isActive || isUpgrade) && !isDisabled && (
                 <div style={{
@@ -268,13 +260,6 @@ export default function NavigationDesktop({
             e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)'
           }}
         >
-          <span style={{
-            fontSize: '18px',
-            minWidth: '24px',
-            textAlign: 'center'
-          }}>
-            🤖
-          </span>
           {t.telegramBot}
         </a>
       </div>

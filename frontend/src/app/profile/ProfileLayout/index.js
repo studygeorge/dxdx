@@ -265,6 +265,7 @@ export default function ProfileLayout({ isMobile }) {
           onLanguageToggle={toggleLanguage}
           onBack={() => router.push('/')}
           t={t}
+          isAnyModalOpen={isAnyModalOpen}
         />
       )}
 

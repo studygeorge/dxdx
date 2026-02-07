@@ -1,5 +1,3 @@
-// dxcapai-app/src/app/profile/components/wallet/ReferralBonusWithdrawModal.js
-
 'use client'
 import React, { useState, useEffect, useRef } from 'react'
 
@@ -7,6 +5,8 @@ const ReferralBonusWithdrawModal = ({
   referral,
   bulkMode = false,
   totalAmount = 0,
+  availableAmount = 0,
+  totalCount = 0,
   availableCount = 0,
   onClose, 
   onSubmit,
@@ -15,7 +15,7 @@ const ReferralBonusWithdrawModal = ({
   error,
   success,
   submitting,
-  t,
+  language = 'en',
   isMobile
 }) => {
   const [currentStep, setCurrentStep] = useState(1)
@@ -24,9 +24,82 @@ const ReferralBonusWithdrawModal = ({
   const [withdrawalStatus, setWithdrawalStatus] = useState('PENDING')
   const intervalRef = useRef(null)
 
+  const translations = {
+    en: {
+      title: bulkMode ? 'Withdraw All Referral Profit' : 'Withdraw Referral Bonus',
+      subtitle: bulkMode 
+        ? 'Withdraw all available referral earnings to your TRC-20 wallet' 
+        : 'Withdraw this referral bonus to your TRC-20 wallet',
+      totalAvailable: 'Total Available',
+      availableToWithdraw: 'available to withdraw',
+      from: 'From',
+      referrals: 'referrals',
+      benefits: [
+        'Fast processing (24-48 hours)',
+        'No withdrawal fees',
+        'Secure TRC-20 transfer'
+      ],
+      trc20AddressLabel: 'Your TRC-20 Wallet Address',
+      trc20Placeholder: 'Enter your TRC-20 address (e.g. TXxx...)',
+      submitButton: 'Submit Withdrawal Request',
+      cancelButton: 'Cancel',
+      step2Title: 'Step 2: Request Status',
+      checkingStatus: 'Checking withdrawal status...',
+      statusPending: 'PENDING - Waiting for admin approval',
+      statusApproved: 'APPROVED - Funds will be sent shortly',
+      statusRejected: 'REJECTED - Please contact support',
+      nextCheck: 'Next check in 10 seconds...',
+      successTitle: 'Request Submitted!',
+      successMessage: 'Your withdrawal request has been submitted successfully.',
+      successSubtext: 'An admin will review and process it within 24-48 hours.',
+      gotItButton: 'Got it!',
+      referralDetails: 'Referral Details',
+      userEmail: 'User Email',
+      investmentAmount: 'Investment Amount',
+      commission: 'Your Commission',
+      investmentDate: 'Investment Date'
+    },
+    ru: {
+      title: bulkMode ? 'Вывести все реферальные бонусы' : 'Вывести реферальный бонус',
+      subtitle: bulkMode 
+        ? 'Выведите все доступные реферальные бонусы на ваш TRC-20 кошелёк' 
+        : 'Выведите этот реферальный бонус на ваш TRC-20 кошелёк',
+      totalAvailable: 'Общая сумма',
+      availableToWithdraw: 'доступно к выводу',
+      from: 'От',
+      referrals: 'рефералов',
+      benefits: [
+        'Быстрая обработка (24-48 часов)',
+        'Без комиссии за вывод',
+        'Безопасный перевод TRC-20'
+      ],
+      trc20AddressLabel: 'Ваш TRC-20 адрес кошелька',
+      trc20Placeholder: 'Введите TRC-20 адрес (например TXxx...)',
+      submitButton: 'Отправить заявку на вывод',
+      cancelButton: 'Отмена',
+      step2Title: 'Шаг 2: Статус заявки',
+      checkingStatus: 'Проверка статуса вывода...',
+      statusPending: 'ОЖИДАНИЕ - Ожидание одобрения администратором',
+      statusApproved: 'ОДОБРЕНО - Средства будут отправлены в ближайшее время',
+      statusRejected: 'ОТКЛОНЕНО - Пожалуйста, свяжитесь с поддержкой',
+      nextCheck: 'Следующая проверка через 10 секунд...',
+      successTitle: 'Заявка отправлена!',
+      successMessage: 'Ваша заявка на вывод была успешно отправлена.',
+      successSubtext: 'Администратор рассмотрит и обработает её в течение 24-48 часов.',
+      gotItButton: 'Понятно!',
+      referralDetails: 'Детали реферала',
+      userEmail: 'Email пользователя',
+      investmentAmount: 'Сумма инвестиции',
+      commission: 'Ваша комиссия',
+      investmentDate: 'Дата инвестиции'
+    }
+  }
+
+  const t = translations[language] || translations.en
+
   if (!bulkMode && !referral) return null
 
-  const commission = bulkMode ? totalAmount : Number(referral?.commission || 0)
+  const commission = bulkMode ? availableAmount : Number(referral?.commission || 0)
 
   const checkWithdrawalStatus = async (withdrawalId) => {
     const token = localStorage.getItem('access_token')
@@ -91,15 +164,12 @@ const ReferralBonusWithdrawModal = ({
     const result = await onSubmit(e)
     
     if (result && result.success) {
-      const withdrawalId = bulkMode 
-        ? (result.data?.withdrawalIds?.[0] || result.withdrawalId)
-        : (result.withdrawalId || result.referralWithdrawalId || result.data?.withdrawalId || result.data?.id)
-      
-      if (withdrawalId) {
-        setPendingWithdrawalId(withdrawalId)
-        setWithdrawalStatus('PENDING')
-        setCurrentStep(2)
+      if (result.data && result.data.withdrawalId) {
+        setPendingWithdrawalId(result.data.withdrawalId)
+      } else if (result.data && result.data.withdrawalIds && result.data.withdrawalIds.length > 0) {
+        setPendingWithdrawalId(result.data.withdrawalIds[0])
       }
+      setCurrentStep(2)
     }
   }
 
@@ -108,55 +178,37 @@ const ReferralBonusWithdrawModal = ({
       clearInterval(intervalRef.current)
       intervalRef.current = null
     }
-
     setCurrentStep(1)
     setPendingWithdrawalId(null)
     setWithdrawalStatus('PENDING')
     setCheckingStatus(false)
+    setTrc20Address('')
     onClose()
   }
 
-  const formatDate = (dateString) => {
-    if (!dateString) return ''
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
+  const getStatusMessage = () => {
+    switch (withdrawalStatus) {
+      case 'PENDING':
+        return t.statusPending
+      case 'APPROVED':
+        return t.statusApproved
+      case 'REJECTED':
+        return t.statusRejected
+      default:
+        return t.statusPending
+    }
   }
 
-  const LoadingSpinner = () => (
-    <div style={{
-      display: 'inline-block',
-      width: '20px',
-      height: '20px',
-      border: '3px solid rgba(45, 212, 191, 0.2)',
-      borderTop: '3px solid #2dd4bf',
-      borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite'
-    }} />
-  )
-
-  useEffect(() => {
-    const style = document.createElement('style')
-    style.textContent = `
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-      }
-    `
-    document.head.appendChild(style)
-    return () => {
-      if (document.head.contains(style)) {
-        document.head.removeChild(style)
-      }
+  const getStatusColor = () => {
+    switch (withdrawalStatus) {
+      case 'APPROVED':
+        return '#10b981'
+      case 'REJECTED':
+        return '#ef4444'
+      default:
+        return '#fbbf24'
     }
-  }, [])
+  }
 
   return (
     <div 
@@ -171,7 +223,7 @@ const ReferralBonusWithdrawModal = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 9999,
+        zIndex: 10001,
         padding: '20px'
       }}
       onClick={(e) => {
@@ -184,10 +236,10 @@ const ReferralBonusWithdrawModal = ({
         style={{
           background: 'rgba(0, 0, 0, 0.95)',
           backdropFilter: 'blur(30px)',
-          border: '1px solid rgba(45, 212, 191, 0.2)',
+          border: '1px solid rgba(45, 212, 191, 0.3)',
           borderRadius: '32px',
           padding: isMobile ? '28px 20px' : '36px 32px',
-          maxWidth: '500px',
+          maxWidth: '580px',
           width: '100%',
           maxHeight: '90vh',
           overflowY: 'auto',
@@ -213,7 +265,8 @@ const ReferralBonusWithdrawModal = ({
             alignItems: 'center',
             justifyContent: 'center',
             borderRadius: '50%',
-            transition: 'all 0.3s'
+            transition: 'all 0.3s',
+            zIndex: 1
           }}
           onMouseOver={(e) => {
             e.currentTarget.style.background = 'rgba(45, 212, 191, 0.15)'
@@ -227,481 +280,539 @@ const ReferralBonusWithdrawModal = ({
           ×
         </button>
 
-        <div style={{
-          fontSize: isMobile ? '11px' : '12px',
-          color: 'rgba(45, 212, 191, 0.7)',
-          marginBottom: '16px',
-          letterSpacing: '-0.3px',
-          fontWeight: '500'
-        }}>
-          {t.step || 'Step'} {currentStep} {t.of || 'of'} 2
-        </div>
-
         {currentStep === 2 ? (
-          <div>
-            <h2 style={{
-              fontSize: isMobile ? '20px' : '24px',
-              fontWeight: '600',
-              color: '#ffffff',
-              marginBottom: '20px',
-              letterSpacing: '-0.8px'
-            }}>
-              {withdrawalStatus === 'APPROVED' ? (t.approved || 'Approved') : 
-               withdrawalStatus === 'REJECTED' ? (t.rejected || 'Rejected') :
-               (t.requestSubmitted || 'Request Submitted')}
-            </h2>
-
-            <div style={{
-              background: withdrawalStatus === 'APPROVED' 
-                ? 'rgba(45, 212, 191, 0.15)'
-                : withdrawalStatus === 'REJECTED'
-                ? 'rgba(239, 68, 68, 0.15)'
-                : 'rgba(45, 212, 191, 0.1)',
-              border: withdrawalStatus === 'APPROVED'
-                ? '1px solid rgba(45, 212, 191, 0.3)'
-                : withdrawalStatus === 'REJECTED'
-                ? '1px solid rgba(239, 68, 68, 0.3)'
-                : '1px solid rgba(45, 212, 191, 0.25)',
-              borderRadius: '16px',
-              padding: isMobile ? '20px' : '24px',
-              marginBottom: '24px',
-              color: 'rgba(255, 255, 255, 0.9)',
-              fontSize: isMobile ? '13px' : '14px',
-              lineHeight: '1.6',
-              letterSpacing: '-0.3px'
-            }}>
-              {withdrawalStatus === 'PENDING' ? (
-                <>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    gap: '12px', 
-                    marginBottom: '16px',
-                    padding: '12px',
-                    background: 'rgba(45, 212, 191, 0.08)',
-                    borderRadius: '12px'
-                  }}>
-                    <LoadingSpinner />
-                    <span style={{ 
-                      fontWeight: '600', 
-                      color: '#2dd4bf',
-                      fontSize: '15px'
-                    }}>
-                      {t.requestSentToSupport || 'Request Sent to Support'}
-                    </span>
-                  </div>
-                  
-                  <div style={{ 
-                    textAlign: 'center',
-                    lineHeight: '1.8',
-                    color: 'rgba(255, 255, 255, 0.85)',
-                    marginBottom: '12px'
-                  }}>
-                    {t.supportWillProcessRequest || 'Your withdrawal request has been submitted to support team. The bonus will be transferred to your account after verification.'}
-                  </div>
-
-                  <div style={{ 
-                    marginTop: '16px',
-                    paddingTop: '16px',
-                    borderTop: '1px solid rgba(45, 212, 191, 0.15)',
-                    textAlign: 'center',
-                    fontSize: '13px', 
-                    color: 'rgba(45, 212, 191, 0.8)',
-                    fontWeight: '500',
-                    animation: 'pulse 2s ease-in-out infinite'
-                  }}>
-                    {t.canCloseWindow || 'You can safely close this window'}
-                  </div>
-                </>
-              ) : withdrawalStatus === 'APPROVED' ? (
-                <>
-                  <div style={{ 
-                    fontWeight: '600', 
-                    color: '#2dd4bf', 
-                    marginBottom: '12px',
-                    fontSize: '16px',
-                    textAlign: 'center'
-                  }}>
-                    ✓ {t.approved || 'Approved'}
-                  </div>
-                  <div style={{ textAlign: 'center', lineHeight: '1.7' }}>
-                    {t.bonusTransferred || 'Your referral bonus has been approved and will be transferred to your wallet shortly.'}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ 
-                    fontWeight: '600', 
-                    color: '#ef4444', 
-                    marginBottom: '12px',
-                    fontSize: '16px',
-                    textAlign: 'center'
-                  }}>
-                    ✕ {t.rejected || 'Rejected'}
-                  </div>
-                  <div style={{ textAlign: 'center', lineHeight: '1.7' }}>
-                    {t.contactSupport || 'Your referral bonus withdrawal request has been rejected. Please contact support for more information.'}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div style={{
-              background: 'rgba(45, 212, 191, 0.08)',
-              border: '1px solid rgba(45, 212, 191, 0.2)',
-              borderRadius: '16px',
-              padding: '20px',
-              marginBottom: '20px'
-            }}>
+          withdrawalStatus === 'APPROVED' ? (
+            // Success Screen
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <div style={{
-                fontSize: isMobile ? '11px' : '12px',
-                color: 'rgba(255, 255, 255, 0.6)',
-                marginBottom: '8px',
-                letterSpacing: '0.5px',
-                textTransform: 'uppercase'
+                width: '80px',
+                height: '80px',
+                margin: '0 auto 24px',
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.2) 100%)',
+                border: '2px solid rgba(16, 185, 129, 0.4)',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                animation: 'pulse 2s ease-in-out infinite',
+                boxShadow: '0 0 30px rgba(16, 185, 129, 0.3)'
               }}>
-                {bulkMode ? (t.totalAmount || 'Total Amount') : (t.referralBonus || 'Referral Bonus')}
+                <div style={{ fontSize: '40px', color: '#10b981' }}>✓</div>
               </div>
-              <div style={{
-                fontSize: isMobile ? '24px' : '28px',
+
+              <h2 style={{
+                fontSize: isMobile ? '22px' : '24px',
                 fontWeight: '700',
-                color: '#2dd4bf',
-                letterSpacing: '-1.2px'
+                color: '#ffffff',
+                margin: '0 0 12px',
+                letterSpacing: '-0.02em'
               }}>
-                ${commission.toFixed(2)}
-              </div>
-              {bulkMode && availableCount > 0 && (
-                <div style={{
-                  fontSize: '12px',
-                  color: 'rgba(255, 255, 255, 0.5)',
-                  marginTop: '6px'
-                }}>
-                  {availableCount} {t.withdrawals || 'withdrawals'}
-                </div>
-              )}
-            </div>
+                {t.successTitle}
+              </h2>
 
-            {trc20Address && (
+              <p style={{
+                fontSize: isMobile ? '15px' : '16px',
+                color: 'rgba(255, 255, 255, 0.9)',
+                margin: '0 0 8px',
+                lineHeight: '1.5',
+                fontWeight: '500'
+              }}>
+                {t.successMessage}
+              </p>
+
+              <p style={{
+                fontSize: isMobile ? '13px' : '14px',
+                color: 'rgba(255, 255, 255, 0.6)',
+                margin: '0',
+                lineHeight: '1.4'
+              }}>
+                {t.successSubtext}
+              </p>
+
+              <button
+                onClick={handleClose}
+                style={{
+                  marginTop: '32px',
+                  padding: '14px 32px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  border: 'none',
+                  borderRadius: '24px',
+                  color: '#000000',
+                  fontSize: '15px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.05)'
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)'
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)'
+                }}
+              >
+                {t.gotItButton}
+              </button>
+            </div>
+          ) : (
+            // Status Checking Screen
+            <div style={{ padding: '20px 0' }}>
+              <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+                <div style={{
+                  width: '56px',
+                  height: '56px',
+                  margin: '0 auto 16px',
+                  background: `linear-gradient(135deg, rgba(${withdrawalStatus === 'APPROVED' ? '16, 185, 129' : withdrawalStatus === 'REJECTED' ? '239, 68, 68' : '251, 191, 36'}, 0.2) 0%, rgba(${withdrawalStatus === 'APPROVED' ? '5, 150, 105' : withdrawalStatus === 'REJECTED' ? '220, 38, 38' : '245, 158, 11'}, 0.2) 100%)`,
+                  border: `2px solid ${getStatusColor()}40`,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {checkingStatus ? (
+                    <div style={{
+                      width: '24px',
+                      height: '24px',
+                      border: `2px solid ${getStatusColor()}40`,
+                      borderTopColor: getStatusColor(),
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite'
+                    }} />
+                  ) : (
+                    <span style={{ fontSize: '24px' }}>
+                      {withdrawalStatus === 'APPROVED' ? '✓' : withdrawalStatus === 'REJECTED' ? '✗' : '⏳'}
+                    </span>
+                  )}
+                </div>
+
+                <h2 style={{
+                  fontSize: isMobile ? '20px' : '22px',
+                  fontWeight: '700',
+                  color: '#ffffff',
+                  margin: '0 0 8px',
+                  letterSpacing: '-0.02em'
+                }}>
+                  {t.step2Title}
+                </h2>
+
+                <p style={{
+                  fontSize: isMobile ? '13px' : '14px',
+                  color: 'rgba(255, 255, 255, 0.6)',
+                  margin: 0
+                }}>
+                  {checkingStatus ? t.checkingStatus : t.nextCheck}
+                </p>
+              </div>
+
+              {/* Status Display */}
               <div style={{
-                background: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(45, 212, 191, 0.15)',
+                background: `${getStatusColor()}15`,
+                border: `1px solid ${getStatusColor()}40`,
+                borderRadius: '20px',
+                padding: '20px',
+                marginBottom: '24px'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  marginBottom: '12px'
+                }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    background: `${getStatusColor()}25`,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '16px'
+                  }}>
+                    {withdrawalStatus === 'APPROVED' ? '✓' : withdrawalStatus === 'REJECTED' ? '✗' : '⏳'}
+                  </div>
+                  <div>
+                    <div style={{
+                      fontSize: '13px',
+                      color: 'rgba(255, 255, 255, 0.6)',
+                      marginBottom: '2px'
+                    }}>
+                      {language === 'ru' ? 'Статус:' : 'Status:'}
+                    </div>
+                    <div style={{
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      color: getStatusColor()
+                    }}>
+                      {withdrawalStatus}
+                    </div>
+                  </div>
+                </div>
+
+                <p style={{
+                  fontSize: '14px',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  margin: 0,
+                  lineHeight: '1.5'
+                }}>
+                  {getStatusMessage()}
+                </p>
+              </div>
+
+              {/* Amount Info */}
+              <div style={{
+                background: 'rgba(45, 212, 191, 0.1)',
+                border: '1px solid rgba(45, 212, 191, 0.3)',
                 borderRadius: '16px',
                 padding: '16px',
-                marginBottom: '20px'
+                marginBottom: '24px'
               }}>
                 <div style={{
-                  fontSize: isMobile ? '11px' : '12px',
+                  fontSize: '13px',
                   color: 'rgba(255, 255, 255, 0.6)',
-                  marginBottom: '8px',
-                  letterSpacing: '0.5px',
-                  textTransform: 'uppercase'
+                  marginBottom: '4px'
                 }}>
-                  {t.walletAddress || 'TRC-20 Address'}
+                  {language === 'ru' ? 'Сумма вывода:' : 'Withdrawal Amount:'}
                 </div>
                 <div style={{
-                  fontSize: '13px',
-                  color: '#2dd4bf',
-                  fontFamily: 'monospace',
-                  wordBreak: 'break-all'
+                  fontSize: '24px',
+                  fontWeight: '700',
+                  color: '#2dd4bf'
                 }}>
-                  {trc20Address}
+                  ${commission.toFixed(2)} USDT
+                </div>
+              </div>
+
+              {/* Close Button */}
+              {(withdrawalStatus === 'APPROVED' || withdrawalStatus === 'REJECTED') && (
+                <button
+                  onClick={handleClose}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    background: 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
+                    border: 'none',
+                    borderRadius: '24px',
+                    color: '#000000',
+                    fontSize: '15px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.02)'
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(45, 212, 191, 0.4)'
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)'
+                    e.currentTarget.style.boxShadow = 'none'
+                  }}
+                >
+                  {t.gotItButton}
+                </button>
+              )}
+            </div>
+          )
+        ) : (
+          // Step 1: Withdrawal Form
+          <>
+            <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                margin: '0 auto 16px',
+                background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.2) 0%, rgba(20, 184, 166, 0.2) 100%)',
+                border: '2px solid rgba(45, 212, 191, 0.4)',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <span style={{ fontSize: '28px' }}>💰</span>
+              </div>
+
+              <h2 style={{
+                fontSize: isMobile ? '20px' : '22px',
+                fontWeight: '700',
+                color: '#ffffff',
+                margin: '0 0 8px',
+                letterSpacing: '-0.02em'
+              }}>
+                {t.title}
+              </h2>
+
+              <p style={{
+                fontSize: isMobile ? '13px' : '14px',
+                color: 'rgba(255, 255, 255, 0.6)',
+                margin: 0,
+                lineHeight: '1.4'
+              }}>
+                {t.subtitle}
+              </p>
+            </div>
+
+            {/* Available Amount Box */}
+            <div style={{
+              background: 'rgba(45, 212, 191, 0.1)',
+              border: '1px solid rgba(45, 212, 191, 0.3)',
+              borderRadius: '20px',
+              padding: '20px',
+              marginBottom: '24px'
+            }}>
+              <div style={{
+                fontSize: '13px',
+                color: 'rgba(255, 255, 255, 0.6)',
+                marginBottom: '8px',
+                fontWeight: '500'
+              }}>
+                {t.totalAvailable}:
+              </div>
+              <div style={{
+                fontSize: isMobile ? '28px' : '32px',
+                fontWeight: '700',
+                color: '#2dd4bf',
+                marginBottom: '12px',
+                letterSpacing: '-0.02em'
+              }}>
+                ${commission.toFixed(2)} USDT
+              </div>
+              {bulkMode && (
+                <div style={{
+                  fontSize: '13px',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span style={{
+                    background: 'rgba(45, 212, 191, 0.2)',
+                    padding: '4px 12px',
+                    borderRadius: '12px',
+                    fontWeight: '600',
+                    color: '#2dd4bf'
+                  }}>
+                    {availableCount}/{totalCount}
+                  </span>
+                  <span>{t.availableToWithdraw}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Referral Details (if not bulk) */}
+            {!bulkMode && referral && (
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '16px',
+                padding: '16px',
+                marginBottom: '24px'
+              }}>
+                <div style={{
+                  fontSize: '13px',
+                  color: 'rgba(255, 255, 255, 0.6)',
+                  marginBottom: '12px',
+                  fontWeight: '600'
+                }}>
+                  {t.referralDetails}:
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>{t.userEmail}:</span>
+                    <span style={{ color: '#ffffff', fontWeight: '500' }}>{referral.email}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>{t.investmentAmount}:</span>
+                    <span style={{ color: '#ffffff', fontWeight: '500' }}>${referral.investmentAmount?.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>{t.commission}:</span>
+                    <span style={{ color: '#2dd4bf', fontWeight: '600' }}>${commission.toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             )}
 
-            <button
-              onClick={handleClose}
-              style={{
-                width: '100%',
-                padding: isMobile ? '14px' : '16px',
-                background: 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
-                border: 'none',
-                borderRadius: '16px',
-                color: '#000000',
-                fontSize: isMobile ? '14px' : '15px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                letterSpacing: '-0.3px',
-                boxShadow: '0 4px 12px rgba(45, 212, 191, 0.25)'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.02)'
-                e.currentTarget.style.boxShadow = '0 6px 16px rgba(45, 212, 191, 0.35)'
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)'
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(45, 212, 191, 0.25)'
-              }}
-            >
-              {t.close || 'Close'}
-            </button>
-          </div>
-        ) : (
-          <>
-            <h2 style={{
-              fontSize: isMobile ? '20px' : '24px',
-              fontWeight: '600',
-              color: '#ffffff',
-              marginBottom: '24px',
-              letterSpacing: '-0.8px'
-            }}>
-              {bulkMode ? (t.bulkWithdrawTitle || 'Withdraw All Referral Profit') : (t.withdrawReferralBonus || 'Withdraw Referral Bonus')}
-            </h2>
-
-            <div style={{
-              background: 'rgba(45, 212, 191, 0.08)',
-              border: '1px solid rgba(45, 212, 191, 0.2)',
-              borderRadius: '16px',
-              padding: '16px 20px',
-              marginBottom: '20px'
-            }}>
-              {bulkMode ? (
-                <>
-                  <div style={{ 
-                    fontSize: '13px', 
-                    color: 'rgba(255, 255, 255, 0.7)', 
-                    marginBottom: '12px',
-                    lineHeight: '1.6'
-                  }}>
-                    {t.bulkWithdrawDescription || 'All available referral earnings will be withdrawn to your wallet'}
-                  </div>
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    paddingTop: '12px',
-                    borderTop: '1px solid rgba(45, 212, 191, 0.15)'
-                  }}>
-                    <div style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)' }}>
-                      {t.totalAmount || 'Total Amount'}:
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: '700', color: '#2dd4bf' }}>
-                      ${commission.toFixed(2)}
-                    </div>
-                  </div>
-                  {availableCount > 0 && (
-                    <div style={{
-                      fontSize: '12px',
-                      color: 'rgba(255, 255, 255, 0.5)',
-                      marginTop: '8px',
-                      textAlign: 'center'
-                    }}>
-                      {availableCount} {t.availableEarnings || 'available earnings'}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div style={{ marginBottom: '12px' }}>
-                    <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)' }}>
-                      {t.referralDetails || 'Referral Details'}
-                    </div>
-                    <div style={{ fontSize: '16px', fontWeight: '600', color: '#2dd4bf', marginTop: '4px' }}>
-                      {referral?.email || 'N/A'}
-                    </div>
-                  </div>
-                  
-                  <div style={{ borderTop: '1px solid rgba(45, 212, 191, 0.15)', paddingTop: '12px' }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      marginBottom: '8px'
-                    }}>
-                      <div style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                        {t.investmentAmount || 'Investment'}:
-                      </div>
-                      <div style={{ fontSize: '14px', color: '#2dd4bf', fontWeight: '500' }}>
-                        ${Number(referral?.investmentAmount || 0).toFixed(2)}
-                      </div>
-                    </div>
-
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      marginBottom: '8px'
-                    }}>
-                      <div style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                        {t.commission || 'Commission'}:
-                      </div>
-                      <div style={{ fontSize: '14px', color: '#2dd4bf', fontWeight: '600' }}>
-                        ${commission.toFixed(2)}
-                      </div>
-                    </div>
-
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between'
-                    }}>
-                      <div style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                        {t.investmentDate || 'Investment Date'}:
-                      </div>
-                      <div style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)' }}>
-                        {formatDate(referral?.investmentDate)}
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
+            {/* Benefits List */}
+            <div style={{ marginBottom: '24px' }}>
+              {t.benefits.map((benefit, index) => (
+                <div key={index} style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px',
+                  marginBottom: '12px',
+                  fontSize: '14px',
+                  color: 'rgba(255, 255, 255, 0.8)'
+                }}>
+                  <span style={{ color: '#2dd4bf', fontSize: '16px', lineHeight: '1.4' }}>•</span>
+                  <span style={{ lineHeight: '1.4' }}>{benefit}</span>
+                </div>
+              ))}
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ 
-                display: 'block', 
-                color: 'rgba(255, 255, 255, 0.7)', 
-                fontSize: '13px', 
+            {/* TRC-20 Address Input */}
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                color: 'rgba(255, 255, 255, 0.8)',
                 marginBottom: '8px',
-                fontWeight: '500',
-                letterSpacing: '-0.3px'
+                fontWeight: '600'
               }}>
-                {t.enterTRC20 || 'TRC-20 Wallet Address'}
+                {t.trc20AddressLabel}
               </label>
               <input
                 type="text"
                 value={trc20Address}
                 onChange={(e) => setTrc20Address(e.target.value)}
-                placeholder={t.trc20Placeholder || 'Enter your TRC-20 address'}
-                required
+                placeholder={t.trc20Placeholder}
                 disabled={submitting}
                 style={{
                   width: '100%',
-                  padding: '14px 18px',
-                  background: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(45, 212, 191, 0.2)',
+                  padding: '14px 16px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: '16px',
                   color: '#ffffff',
                   fontSize: '14px',
                   outline: 'none',
-                  boxSizing: 'border-box',
-                  fontFamily: 'monospace',
                   transition: 'all 0.3s',
-                  letterSpacing: '-0.3px'
+                  fontFamily: 'monospace'
                 }}
                 onFocus={(e) => {
+                  e.target.style.background = 'rgba(255, 255, 255, 0.08)'
                   e.target.style.borderColor = 'rgba(45, 212, 191, 0.5)'
-                  e.target.style.background = 'rgba(0, 0, 0, 0.4)'
-                  e.target.style.boxShadow = '0 0 0 3px rgba(45, 212, 191, 0.1)'
                 }}
                 onBlur={(e) => {
-                  e.target.style.borderColor = 'rgba(45, 212, 191, 0.2)'
-                  e.target.style.background = 'rgba(0, 0, 0, 0.3)'
-                  e.target.style.boxShadow = 'none'
+                  e.target.style.background = 'rgba(255, 255, 255, 0.05)'
+                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.1)'
                 }}
               />
             </div>
 
+            {/* Error Message */}
             {error && (
               <div style={{
-                background: 'rgba(239, 68, 68, 0.15)',
+                padding: '12px 16px',
+                background: 'rgba(239, 68, 68, 0.1)',
                 border: '1px solid rgba(239, 68, 68, 0.3)',
-                borderRadius: '12px',
-                padding: '10px 14px',
-                marginBottom: '16px',
+                borderRadius: '16px',
                 color: '#ef4444',
-                fontSize: '12px',
-                letterSpacing: '-0.3px'
+                fontSize: '14px',
+                marginBottom: '20px',
+                textAlign: 'center'
               }}>
                 {error}
               </div>
             )}
 
-            {success && (
-              <div style={{
-                background: 'rgba(45, 212, 191, 0.15)',
-                border: '1px solid rgba(45, 212, 191, 0.3)',
-                borderRadius: '12px',
-                padding: '10px 14px',
-                marginBottom: '16px',
-                color: '#2dd4bf',
-                fontSize: '12px',
-                letterSpacing: '-0.3px'
-              }}>
-                {success}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
+            {/* Action Buttons */}
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              marginTop: '24px'
+            }}>
               <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting || !trc20Address}
+                onClick={handleClose}
+                disabled={submitting}
                 style={{
-                  width: '100%',
-                  padding: '16px',
-                  background: (submitting || !trc20Address)
-                    ? 'rgba(45, 212, 191, 0.3)' 
+                  flex: 1,
+                  padding: '14px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '24px',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  fontSize: '15px',
+                  fontWeight: '600',
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.5 : 1,
+                  transition: 'all 0.3s'
+                }}
+                onMouseOver={(e) => {
+                  if (!submitting) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)'
+                  }
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'
+                }}
+              >
+                {t.cancelButton}
+              </button>
+
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || !trc20Address.trim()}
+                style={{
+                  flex: 2,
+                  padding: '14px',
+                  background: (submitting || !trc20Address.trim())
+                    ? 'rgba(45, 212, 191, 0.3)'
                     : 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
                   border: 'none',
-                  borderRadius: '16px',
-                  color: (submitting || !trc20Address)
-                    ? 'rgba(255, 255, 255, 0.4)' 
+                  borderRadius: '24px',
+                  color: (submitting || !trc20Address.trim())
+                    ? 'rgba(255, 255, 255, 0.5)'
                     : '#000000',
                   fontSize: '15px',
                   fontWeight: '600',
-                  cursor: (submitting || !trc20Address)
-                    ? 'not-allowed' 
+                  cursor: (submitting || !trc20Address.trim())
+                    ? 'not-allowed'
                     : 'pointer',
                   transition: 'all 0.3s',
-                  letterSpacing: '-0.3px',
-                  boxShadow: (submitting || !trc20Address)
+                  boxShadow: (submitting || !trc20Address.trim())
                     ? 'none'
-                    : '0 4px 12px rgba(45, 212, 191, 0.25)'
+                    : '0 4px 12px rgba(45, 212, 191, 0.3)'
                 }}
                 onMouseOver={(e) => {
-                  if (!submitting && trc20Address) {
+                  if (!submitting && trc20Address.trim()) {
                     e.currentTarget.style.transform = 'scale(1.02)'
-                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(45, 212, 191, 0.35)'
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(45, 212, 191, 0.4)'
                   }
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.transform = 'scale(1)'
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(45, 212, 191, 0.25)'
+                  if (!submitting && trc20Address.trim()) {
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(45, 212, 191, 0.3)'
+                  }
                 }}
               >
-                {submitting 
-                  ? (t.processing || 'Processing...') 
-                  : bulkMode 
-                    ? `${t.confirmWithdrawal || 'Confirm Withdrawal'} ($${commission.toFixed(2)})`
-                    : `${t.withdrawBonus || 'Withdraw Bonus'} ($${commission.toFixed(2)})`
-                }
+                {submitting ? (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <span style={{ 
+                      display: 'inline-block',
+                      width: '16px',
+                      height: '16px',
+                      border: '2px solid rgba(255, 255, 255, 0.3)',
+                      borderTopColor: '#fff',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite'
+                    }} />
+                    {language === 'ru' ? 'Обработка...' : 'Processing...'}
+                  </span>
+                ) : t.submitButton}
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={submitting}
-              style={{
-                width: '100%',
-                padding: '14px',
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(45, 212, 191, 0.2)',
-                borderRadius: '16px',
-                color: 'rgba(255, 255, 255, 0.8)',
-                fontSize: '14px',
-                fontWeight: '600',
-                cursor: submitting ? 'not-allowed' : 'pointer',
-                transition: 'all 0.3s',
-                letterSpacing: '-0.3px'
-              }}
-              onMouseOver={(e) => {
-                if (!submitting) {
-                  e.currentTarget.style.background = 'rgba(45, 212, 191, 0.1)'
-                  e.currentTarget.style.borderColor = 'rgba(45, 212, 191, 0.3)'
-                  e.currentTarget.style.color = '#2dd4bf'
-                }
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'
-                e.currentTarget.style.borderColor = 'rgba(45, 212, 191, 0.2)'
-                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.8)'
-              }}
-            >
-              {t.cancel || 'Cancel'}
-            </button>
           </>
         )}
+
+        <style jsx>{`
+          @keyframes pulse {
+            0%, 100% {
+              transform: scale(1);
+              opacity: 1;
+            }
+            50% {
+              transform: scale(1.05);
+              opacity: 0.9;
+            }
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     </div>
   )

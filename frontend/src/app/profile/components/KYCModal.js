@@ -4,7 +4,6 @@ import CameraCapture from './CameraCapture'
 
 const API_BASE_URL = 'https://dxcapital-ai.com'
 
-// Функция детекции поддерживаемого MIME-типа для видео
 const getSupportedVideoMimeType = () => {
   const types = [
     'video/webm;codecs=vp8,opus',
@@ -17,12 +16,10 @@ const getSupportedVideoMimeType = () => {
 
   for (const type of types) {
     if (MediaRecorder.isTypeSupported(type)) {
-      console.log('✅ Supported video MIME type:', type)
       return type
     }
   }
 
-  console.warn('⚠️ No supported video MIME type found, using default')
   return 'video/mp4'
 }
 
@@ -56,7 +53,7 @@ export default function KYCModal({
 
   const translations = {
     en: {
-      title: 'ID Verification',
+      title: 'KYC Verification',
       notSubmitted: 'Not Verified',
       pending: 'Under Review',
       approved: 'Verified',
@@ -75,18 +72,18 @@ export default function KYCModal({
       photoReq: 'Clear photo, all corners visible',
       videoReq: '3-30 sec, show document clearly',
       
-      statusPending: 'Under review (up to 30 min)',
+      statusPending: 'Your documents have been submitted for review. You will be able to access features after approval.',
       statusApproved: 'Verified! All features unlocked',
-      statusRejected: 'Please resubmit',
+      statusRejected: 'Please resubmit new documents',
       reason: 'Reason',
       
       loading: 'Loading...',
-      photoUploaded: 'Photo uploaded',
-      videoUploaded: 'Video uploaded, reviewing...',
+      photoUploaded: 'Photo uploaded successfully',
+      videoUploaded: 'Video uploaded successfully. Under review.',
       startOver: 'Start Over'
     },
     ru: {
-      title: 'Верификация',
+      title: 'KYC Верификация',
       notSubmitted: 'Не верифицирован',
       pending: 'На проверке',
       approved: 'Верифицирован',
@@ -105,14 +102,14 @@ export default function KYCModal({
       photoReq: 'Четкое фото, все углы видны',
       videoReq: '3-30 сек, покажите документ',
       
-      statusPending: 'На проверке (до 30 мин)',
+      statusPending: 'Ваши документы отправлены на проверку. Функции будут доступны после одобрения.',
       statusApproved: 'Верифицирован! Все функции доступны',
-      statusRejected: 'Пожалуйста, отправьте заново',
+      statusRejected: 'Пожалуйста, отправьте новые документы',
       reason: 'Причина',
       
       loading: 'Загрузка...',
-      photoUploaded: 'Фото загружено',
-      videoUploaded: 'Видео загружено, проверяем...',
+      photoUploaded: 'Фото успешно загружено',
+      videoUploaded: 'Видео успешно загружено. На проверке.',
       startOver: 'Начать заново'
     }
   }
@@ -159,31 +156,24 @@ export default function KYCModal({
     }
   }
 
-  // Обработчик захвата фото с АВТОЗАГРУЗКОЙ
   const handlePhotoCapture = async (photoBlob, metadata) => {
-    console.log('📸 Photo captured:', photoBlob.size, 'bytes')
     setCapturedPhoto({ blob: photoBlob, metadata })
     setShowCamera(false)
     setCaptureMode(null)
     setError('')
     
-    // АВТОЗАГРУЗКА фото
     await uploadPhoto(photoBlob, metadata)
   }
 
-  // Обработчик захвата видео с АВТОЗАГРУЗКОЙ
   const handleVideoCapture = async (videoBlob, metadata) => {
-    console.log('🎥 Video captured:', videoBlob.size, 'bytes')
     setCapturedVideo({ blob: videoBlob, metadata })
     setShowCamera(false)
     setCaptureMode(null)
     setError('')
     
-    // АВТОЗАГРУЗКА видео
     await uploadVideo(videoBlob, metadata)
   }
 
-  // Загрузка фото
   const uploadPhoto = async (photoBlob, metadata) => {
     setUploading(true)
     setError('')
@@ -223,7 +213,6 @@ export default function KYCModal({
         setCapturedPhoto(null)
       }
     } catch (error) {
-      console.error('❌ Photo upload error:', error)
       setError('Upload failed')
       setCapturedPhoto(null)
     } finally {
@@ -231,7 +220,6 @@ export default function KYCModal({
     }
   }
 
-  // Загрузка видео
   const uploadVideo = async (videoBlob, metadata) => {
     setUploading(true)
     setError('')
@@ -286,7 +274,6 @@ export default function KYCModal({
         setCapturedVideo(null)
       }
     } catch (error) {
-      console.error('❌ Video upload error:', error)
       setError('Upload failed')
       setCapturedVideo(null)
     } finally {
@@ -326,13 +313,13 @@ export default function KYCModal({
   const getStatusColor = (status) => {
     switch (status) {
       case 'APPROVED':
-        return '#22c55e'
+        return '#2dd4bf' // Tiffany
       case 'PENDING':
-        return '#eab308'
+        return '#6b7280' // Gray
       case 'REJECTED':
-        return '#ef4444'
+        return '#ef4444' // Red (error)
       default:
-        return '#6b7280'
+        return '#6b7280' // Gray
     }
   }
 
@@ -364,7 +351,6 @@ export default function KYCModal({
 
   if (!isOpen) return null
 
-  // Показываем камеру если активен режим съёмки
   if (showCamera && captureMode) {
     return (
       <CameraCapture
@@ -415,7 +401,7 @@ export default function KYCModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Compact Header */}
+        {/* Header */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -426,12 +412,8 @@ export default function KYCModal({
             fontSize: isMobile ? '18px' : '20px',
             fontWeight: '600',
             color: '#ffffff',
-            margin: 0,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
+            margin: 0
           }}>
-            <span style={{ fontSize: '20px' }}>🎫</span>
             {t.title}
           </h2>
 
@@ -468,7 +450,7 @@ export default function KYCModal({
           </div>
         ) : (
           <>
-            {/* Compact Status */}
+            {/* Status Badge */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -483,7 +465,8 @@ export default function KYCModal({
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                background: getStatusColor(kycStatus)
+                background: getStatusColor(kycStatus),
+                boxShadow: `0 0 8px ${getStatusColor(kycStatus)}80`
               }} />
               <span style={{
                 color: getStatusColor(kycStatus),
@@ -495,6 +478,7 @@ export default function KYCModal({
               </span>
             </div>
 
+            {/* Status Message */}
             {getStatusMessage(kycStatus) && (
               <div style={{
                 fontSize: '12px',
@@ -503,12 +487,14 @@ export default function KYCModal({
                 padding: '10px',
                 background: 'rgba(255, 255, 255, 0.03)',
                 borderRadius: '10px',
-                lineHeight: '1.5'
+                lineHeight: '1.5',
+                border: '1px solid rgba(255, 255, 255, 0.1)'
               }}>
                 {getStatusMessage(kycStatus)}
               </div>
             )}
 
+            {/* Rejection Reason */}
             {kycStatus === 'REJECTED' && kycRejectionReason && (
               <div style={{
                 marginBottom: '16px',
@@ -534,13 +520,13 @@ export default function KYCModal({
               </div>
             )}
 
-            {/* Compact Steps */}
+            {/* Steps */}
             {kycStatus !== 'APPROVED' && kycStatus !== 'PENDING' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {/* Step 1: Photo */}
                 <div style={{
-                  background: kycPhotoUrl ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.03)',
-                  border: `1px solid ${kycPhotoUrl ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+                  background: kycPhotoUrl ? 'rgba(45, 212, 191, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+                  border: `1px solid ${kycPhotoUrl ? 'rgba(45, 212, 191, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
                   borderRadius: '12px',
                   padding: '12px'
                 }}>
@@ -550,9 +536,13 @@ export default function KYCModal({
                     gap: '10px',
                     marginBottom: '8px'
                   }}>
-                    <span style={{ fontSize: '18px' }}>
-                      {kycPhotoUrl ? '✅' : '📸'}
-                    </span>
+                    <div style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: kycPhotoUrl ? '#2dd4bf' : '#6b7280',
+                      boxShadow: kycPhotoUrl ? '0 0 10px #2dd4bf' : 'none'
+                    }} />
                     <span style={{
                       fontSize: '14px',
                       fontWeight: '600',
@@ -577,7 +567,8 @@ export default function KYCModal({
                           fontSize: '12px',
                           fontWeight: '600',
                           cursor: uploading ? 'not-allowed' : 'pointer',
-                          whiteSpace: 'nowrap'
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 0 20px rgba(45, 212, 191, 0.3)'
                         }}
                       >
                         {capturedPhoto ? t.retake : t.takePhoto}
@@ -595,8 +586,8 @@ export default function KYCModal({
 
                 {/* Step 2: Video */}
                 <div style={{
-                  background: kycVideoUrl ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.03)',
-                  border: `1px solid ${kycVideoUrl ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+                  background: kycVideoUrl ? 'rgba(45, 212, 191, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+                  border: `1px solid ${kycVideoUrl ? 'rgba(45, 212, 191, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
                   borderRadius: '12px',
                   padding: '12px',
                   opacity: kycPhotoUrl ? 1 : 0.5
@@ -607,9 +598,13 @@ export default function KYCModal({
                     gap: '10px',
                     marginBottom: '8px'
                   }}>
-                    <span style={{ fontSize: '18px' }}>
-                      {kycVideoUrl ? '✅' : '🎥'}
-                    </span>
+                    <div style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: kycVideoUrl ? '#2dd4bf' : '#6b7280',
+                      boxShadow: kycVideoUrl ? '0 0 10px #2dd4bf' : 'none'
+                    }} />
                     <span style={{
                       fontSize: '14px',
                       fontWeight: '600',
@@ -637,7 +632,8 @@ export default function KYCModal({
                           fontSize: '12px',
                           fontWeight: '600',
                           cursor: (!kycPhotoUrl || uploading) ? 'not-allowed' : 'pointer',
-                          whiteSpace: 'nowrap'
+                          whiteSpace: 'nowrap',
+                          boxShadow: !kycPhotoUrl ? 'none' : '0 0 20px rgba(45, 212, 191, 0.3)'
                         }}
                       >
                         {capturedVideo ? t.retake : t.recordVideo}
@@ -655,7 +651,7 @@ export default function KYCModal({
               </div>
             )}
 
-            {/* Messages */}
+            {/* Error Message */}
             {error && (
               <div style={{
                 background: 'rgba(239, 68, 68, 0.15)',
@@ -670,20 +666,22 @@ export default function KYCModal({
               </div>
             )}
 
+            {/* Success Message */}
             {success && (
               <div style={{
-                background: 'rgba(34, 197, 94, 0.15)',
-                border: '1px solid rgba(34, 197, 94, 0.3)',
+                background: 'rgba(45, 212, 191, 0.15)',
+                border: '1px solid rgba(45, 212, 191, 0.3)',
                 borderRadius: '10px',
                 padding: '10px',
                 marginTop: '12px',
-                color: '#22c55e',
+                color: '#2dd4bf',
                 fontSize: '12px'
               }}>
                 {success}
               </div>
             )}
 
+            {/* Uploading Indicator */}
             {uploading && (
               <div style={{
                 marginTop: '12px',
@@ -733,7 +731,8 @@ export default function KYCModal({
                   fontSize: '14px',
                   fontWeight: '600',
                   cursor: 'pointer',
-                  marginTop: '16px'
+                  marginTop: '16px',
+                  boxShadow: '0 0 20px rgba(45, 212, 191, 0.3)'
                 }}
               >
                 {t.close}

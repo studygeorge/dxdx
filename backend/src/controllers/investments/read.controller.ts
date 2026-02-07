@@ -223,6 +223,11 @@ export class ReadInvestmentsController {
             isSimulated: !!(inv.simulatedCurrentDate),
             simulatedDate: inv.simulatedCurrentDate,
             plan: inv.plan,
+            // 🆕 Реинвестирование info
+            lastReinvestAt: inv.lastReinvestAt,
+            reinvestedAmount: inv.reinvestedAmount,
+            roiActivationDate: inv.roiActivationDate,
+            previousROI: inv.previousROI,
             // 🆕 Pending upgrade info
             pendingUpgrade: inv.pendingUpgradePlan ? {
               newPlan: inv.pendingUpgradePlan,

@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { ReinvestDto } from '../../types/investments.types'
 import { ReinvestService } from '../../services/investments/reinvest.service'
 import { DURATION_BONUSES } from '../../constants/investments.constants'
+import { getNextActivationDate } from '../../utils/roiActivation'
 
 const prisma = new PrismaClient()
 
@@ -192,6 +193,15 @@ export class ReinvestController {
         formula: `${newAccumulatedInterest.toFixed(2)} (accumulated) + ${newTotalAmount.toFixed(2)} (new amount) + ${futureProfit.toFixed(2)} (future profit) = ${newExpectedReturn.toFixed(2)}`
       })
 
+      // 🆕 Рассчитываем дату активации нового ROI (15/30/28 февраля)
+      const roiActivationDate = getNextActivationDate(now)
+      
+      console.log('📅 ROI Activation Date:', {
+        reinvestDate: now.toISOString(),
+        activationDate: roiActivationDate.toISOString(),
+        daysUntil: Math.ceil((roiActivationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      })
+
       await prisma.investment.update({
         where: { id: investmentId },
         data: {
@@ -201,7 +211,12 @@ export class ReinvestController {
           accumulatedInterest: newAccumulatedInterest,
           lastUpgradeDate: now,
           expectedReturn: newExpectedReturn,  // ✅ ПРАВИЛЬНАЯ ФОРМУЛА!
-          totalReturn: newExpectedReturn      // ✅ ДОБАВЛЕНО!
+          totalReturn: newExpectedReturn,     // ✅ ДОБАВЛЕНО!
+          // 🆕 Поля реинвестирования
+          lastReinvestAt: now,
+          reinvestedAmount: reinvestAmount,
+          roiActivationDate: roiActivationDate,
+          previousROI: oldROI
         }
       })
 

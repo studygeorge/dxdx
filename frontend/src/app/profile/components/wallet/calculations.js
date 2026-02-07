@@ -76,3 +76,34 @@ export const formatDate = (dateString, language = 'en') => {
     day: 'numeric'
   })
 }
+
+// 🆕 Calculate next ROI activation date (15th/30th/28th rule)
+export const getNextActivationDate = (currentDate = new Date()) => {
+  const day = currentDate.getDate()
+  const month = currentDate.getMonth()
+  const year = currentDate.getFullYear()
+
+  let activationDate
+
+  if (day < 15) {
+    // Before 15th → activates on 15th of current month
+    activationDate = new Date(year, month, 15, 0, 0, 0, 0)
+  } else if (day < 30) {
+    // Between 15th and 30th → activates on 30th (or last day of month)
+    const lastDayOfMonth = new Date(year, month + 1, 0).getDate()
+    activationDate = new Date(year, month, Math.min(30, lastDayOfMonth), 0, 0, 0, 0)
+  } else {
+    // After 30th → activates on 15th of next month
+    activationDate = new Date(year, month + 1, 15, 0, 0, 0, 0)
+  }
+
+  return activationDate
+}
+
+// 🆕 Calculate days until activation date
+export const getDaysUntilActivation = (activationDate) => {
+  if (!activationDate) return 0
+  const now = new Date()
+  const diff = new Date(activationDate) - now
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+}

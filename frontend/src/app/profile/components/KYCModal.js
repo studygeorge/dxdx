@@ -4,15 +4,15 @@ import CameraCapture from './CameraCapture'
 
 const API_BASE_URL = 'https://dxcapital-ai.com'
 
-// 🆕 Функция детекции поддерживаемого MIME-типа для видео
+// Функция детекции поддерживаемого MIME-типа для видео
 const getSupportedVideoMimeType = () => {
   const types = [
-    'video/webm;codecs=vp8,opus',  // Android Chrome
-    'video/webm;codecs=vp9,opus',  // Android Chrome (newer)
-    'video/webm',                  // Android Chrome (fallback)
-    'video/mp4;codecs=h264,aac',   // iOS Safari
-    'video/mp4',                   // iOS Safari (fallback)
-    'video/quicktime'              // iOS Safari (alternative)
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=vp9,opus',
+    'video/webm',
+    'video/mp4;codecs=h264,aac',
+    'video/mp4',
+    'video/quicktime'
   ]
 
   for (const type of types) {
@@ -23,10 +23,9 @@ const getSupportedVideoMimeType = () => {
   }
 
   console.warn('⚠️ No supported video MIME type found, using default')
-  return 'video/mp4' // Fallback
+  return 'video/mp4'
 }
 
-// 🆕 Получение расширения файла из MIME-типа
 const getFileExtension = (mimeType) => {
   if (mimeType.includes('webm')) return 'webm'
   if (mimeType.includes('quicktime')) return 'mov'
@@ -45,9 +44,8 @@ export default function KYCModal({
   const [kycVideoUrl, setKycVideoUrl] = useState(null)
   const [kycRejectionReason, setKycRejectionReason] = useState(null)
   
-  // 🆕 Camera states
   const [showCamera, setShowCamera] = useState(false)
-  const [captureMode, setCaptureMode] = useState(null) // 'photo' | 'video'
+  const [captureMode, setCaptureMode] = useState(null)
   const [capturedPhoto, setCapturedPhoto] = useState(null)
   const [capturedVideo, setCapturedVideo] = useState(null)
   
@@ -58,106 +56,64 @@ export default function KYCModal({
 
   const translations = {
     en: {
-      title: 'KYC Verification',
-      subtitle: 'Identity Document Verification Required',
-      description: 'Complete identity verification in 2 steps: 1) Take a photo of your document, 2) Record a short verification video',
-      notSubmitted: 'Not Submitted',
+      title: 'ID Verification',
+      notSubmitted: 'Not Verified',
       pending: 'Under Review',
-      approved: 'Approved',
+      approved: 'Verified',
       rejected: 'Rejected',
       
-      // 🆕 Step indicators
-      step1Title: 'Step 1: Document Photo',
-      step2Title: 'Step 2: Video Verification',
-      stepCompleted: 'Completed',
-      stepPending: 'Pending',
+      step1: 'Document Photo',
+      step2: 'Video Selfie',
       
-      // 🆕 Camera buttons
       takePhoto: 'Take Photo',
       recordVideo: 'Record Video',
-      retakePhoto: 'Retake Photo',
-      retakeVideo: 'Retake Video',
+      retake: 'Retake',
       
-      uploadPhoto: 'Upload Photo',
-      uploadVideo: 'Submit Video',
       uploading: 'Uploading...',
-      
       close: 'Close',
-      deleteFiles: 'Start Over',
       
-      requirements: 'Requirements:',
-      photoReq1: 'Clear, readable document photo',
-      photoReq2: 'All corners visible',
-      videoReq1: 'Record yourself with the document',
-      videoReq2: 'Duration: 3-30 seconds',
-      videoReq3: 'Good lighting and clear voice',
+      photoReq: 'Clear photo, all corners visible',
+      videoReq: '3-30 sec, show document clearly',
       
-      statusPending: 'Your documents are being reviewed. This usually takes up to 30 minutes.',
-      statusApproved: 'Your identity has been verified! You can now access all features.',
-      statusRejected: 'Your documents were rejected. Please submit new photo and video.',
-      rejectionReason: 'Rejection reason:',
+      statusPending: 'Under review (up to 30 min)',
+      statusApproved: 'Verified! All features unlocked',
+      statusRejected: 'Please resubmit',
+      reason: 'Reason',
       
-      errorNoPhoto: 'Please take a photo first',
-      errorNoVideo: 'Please record a video first',
-      errorUpload: 'Upload failed. Please try again.',
-      successPhotoUpload: 'Photo uploaded successfully! Now record a video.',
-      successVideoUpload: 'Video uploaded successfully! Your documents are under review.',
       loading: 'Loading...',
-      currentStatus: 'Current Status',
-      
-      photoTaken: 'Photo captured',
-      videoRecorded: 'Video recorded',
-      deleteConfirm: 'Delete all files and start over?'
+      photoUploaded: 'Photo uploaded',
+      videoUploaded: 'Video uploaded, reviewing...',
+      startOver: 'Start Over'
     },
     ru: {
-      title: 'KYC Верификация',
-      subtitle: 'Требуется подтверждение личности',
-      description: 'Пройдите верификацию в 2 шага: 1) Сделайте фото документа, 2) Запишите короткое видео для подтверждения',
-      notSubmitted: 'Не отправлено',
+      title: 'Верификация',
+      notSubmitted: 'Не верифицирован',
       pending: 'На проверке',
-      approved: 'Одобрено',
+      approved: 'Верифицирован',
       rejected: 'Отклонено',
       
-      step1Title: 'Шаг 1: Фото документа',
-      step2Title: 'Шаг 2: Видео-верификация',
-      stepCompleted: 'Выполнено',
-      stepPending: 'Ожидание',
+      step1: 'Фото документа',
+      step2: 'Видео селфи',
       
       takePhoto: 'Сделать фото',
       recordVideo: 'Записать видео',
-      retakePhoto: 'Переснять фото',
-      retakeVideo: 'Переснять видео',
+      retake: 'Переснять',
       
-      uploadPhoto: 'Загрузить фото',
-      uploadVideo: 'Отправить видео',
       uploading: 'Загрузка...',
-      
       close: 'Закрыть',
-      deleteFiles: 'Начать заново',
       
-      requirements: 'Требования:',
-      photoReq1: 'Четкое, читаемое фото документа',
-      photoReq2: 'Все углы документа видны',
-      videoReq1: 'Запишите себя с документом',
-      videoReq2: 'Длительность: 3-30 секунд',
-      videoReq3: 'Хорошее освещение и четкая речь',
+      photoReq: 'Четкое фото, все углы видны',
+      videoReq: '3-30 сек, покажите документ',
       
-      statusPending: 'Ваши документы проверяются. Обычно это занимает до 30 минут.',
-      statusApproved: 'Ваша личность подтверждена! Теперь вам доступны все функции.',
-      statusRejected: 'Ваши документы были отклонены. Пожалуйста, загрузите новое фото и видео.',
-      rejectionReason: 'Причина отклонения:',
+      statusPending: 'На проверке (до 30 мин)',
+      statusApproved: 'Верифицирован! Все функции доступны',
+      statusRejected: 'Пожалуйста, отправьте заново',
+      reason: 'Причина',
       
-      errorNoPhoto: 'Пожалуйста, сначала сделайте фото',
-      errorNoVideo: 'Пожалуйста, запишите видео',
-      errorUpload: 'Ошибка загрузки. Попробуйте снова.',
-      successPhotoUpload: 'Фото загружено успешно! Теперь запишите видео.',
-      successVideoUpload: 'Видео загружено успешно! Ваши документы на проверке.',
       loading: 'Загрузка...',
-      currentStatus: 'Текущий статус',
-      
-      photoTaken: 'Фото сделано',
-      videoRecorded: 'Видео записано',
-      deleteConfirm: 'Удалить все файлы и начать заново?'
+      photoUploaded: 'Фото загружено',
+      videoUploaded: 'Видео загружено, проверяем...',
+      startOver: 'Начать заново'
     }
   }
 
@@ -174,7 +130,6 @@ export default function KYCModal({
     const token = localStorage.getItem('access_token')
 
     if (!token) {
-      setError('Authentication required')
       setLoading(false)
       return
     }
@@ -196,49 +151,40 @@ export default function KYCModal({
         setKycPhotoUrl(data.kycPhotoUrl || null)
         setKycVideoUrl(data.kycVideoUrl || null)
         setKycRejectionReason(data.kycRejectionReason || null)
-        
-        console.log('✅ KYC Status loaded:', {
-          status: data.kycStatus,
-          hasPhoto: !!data.kycPhotoUrl,
-          hasVideo: !!data.kycVideoUrl
-        })
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || 'Failed to load KYC status')
       }
     } catch (error) {
       console.error('❌ Failed to fetch KYC status:', error)
-      setError('Network error. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  // 🆕 Обработчик захвата фото
-  const handlePhotoCapture = (photoBlob, metadata) => {
+  // Обработчик захвата фото с АВТОЗАГРУЗКОЙ
+  const handlePhotoCapture = async (photoBlob, metadata) => {
     console.log('📸 Photo captured:', photoBlob.size, 'bytes')
     setCapturedPhoto({ blob: photoBlob, metadata })
     setShowCamera(false)
     setCaptureMode(null)
     setError('')
+    
+    // АВТОЗАГРУЗКА фото
+    await uploadPhoto(photoBlob, metadata)
   }
 
-  // 🆕 Обработчик захвата видео
-  const handleVideoCapture = (videoBlob, metadata) => {
+  // Обработчик захвата видео с АВТОЗАГРУЗКОЙ
+  const handleVideoCapture = async (videoBlob, metadata) => {
     console.log('🎥 Video captured:', videoBlob.size, 'bytes')
     setCapturedVideo({ blob: videoBlob, metadata })
     setShowCamera(false)
     setCaptureMode(null)
     setError('')
+    
+    // АВТОЗАГРУЗКА видео
+    await uploadVideo(videoBlob, metadata)
   }
 
-  // 🆕 Загрузка фото
-  const handleUploadPhoto = async () => {
-    if (!capturedPhoto) {
-      setError(t.errorNoPhoto)
-      return
-    }
-
+  // Загрузка фото
+  const uploadPhoto = async (photoBlob, metadata) => {
     setUploading(true)
     setError('')
     setSuccess('')
@@ -246,13 +192,11 @@ export default function KYCModal({
     const token = localStorage.getItem('access_token')
     const formData = new FormData()
     
-    // Создаём файл из blob
-    const photoFile = new File([capturedPhoto.blob], 'kyc_photo.jpg', { type: 'image/jpeg' })
+    const photoFile = new File([photoBlob], 'kyc_photo.jpg', { type: 'image/jpeg' })
     formData.append('file', photoFile)
     
-    // 🆕 Добавляем метаданные
-    if (capturedPhoto.metadata) {
-      formData.append('metadata', JSON.stringify(capturedPhoto.metadata))
+    if (metadata) {
+      formData.append('metadata', JSON.stringify(metadata))
     }
 
     try {
@@ -267,35 +211,28 @@ export default function KYCModal({
 
       if (response.ok) {
         const data = await response.json()
-        console.log('✅ Photo uploaded:', data)
-        
-        setSuccess(t.successPhotoUpload)
+        setSuccess(t.photoUploaded)
         setKycPhotoUrl(data.data?.kycPhotoUrl)
-        setCapturedPhoto(null)
         
-        // Автоматически переходим к записи видео
         setTimeout(() => {
           setSuccess('')
         }, 2000)
       } else {
         const errorData = await response.json()
-        setError(errorData.error || t.errorUpload)
+        setError(errorData.error || 'Upload failed')
+        setCapturedPhoto(null)
       }
     } catch (error) {
       console.error('❌ Photo upload error:', error)
-      setError(t.errorUpload)
+      setError('Upload failed')
+      setCapturedPhoto(null)
     } finally {
       setUploading(false)
     }
   }
 
-  // 🆕 Загрузка видео (ИСПРАВЛЕНО)
-  const handleUploadVideo = async () => {
-    if (!capturedVideo) {
-      setError(t.errorNoVideo)
-      return
-    }
-
+  // Загрузка видео
+  const uploadVideo = async (videoBlob, metadata) => {
     setUploading(true)
     setError('')
     setSuccess('')
@@ -303,28 +240,19 @@ export default function KYCModal({
     const token = localStorage.getItem('access_token')
     const formData = new FormData()
     
-    // 🔧 ИСПРАВЛЕНО: Детекция поддерживаемого MIME-типа
     const supportedMimeType = getSupportedVideoMimeType()
     const fileExtension = getFileExtension(supportedMimeType)
     
-    console.log('📹 Creating video file:', {
-      mimeType: supportedMimeType,
-      extension: fileExtension,
-      blobSize: capturedVideo.blob.size
-    })
-    
-    // Создаём файл с правильным MIME-типом и расширением
     const videoFile = new File(
-      [capturedVideo.blob], 
+      [videoBlob], 
       `kyc_video.${fileExtension}`, 
       { type: supportedMimeType }
     )
     
     formData.append('file', videoFile)
     
-    // 🆕 Добавляем метаданные
-    if (capturedVideo.metadata) {
-      formData.append('metadata', JSON.stringify(capturedVideo.metadata))
+    if (metadata) {
+      formData.append('metadata', JSON.stringify(metadata))
     }
 
     try {
@@ -339,14 +267,11 @@ export default function KYCModal({
 
       if (response.ok) {
         const data = await response.json()
-        console.log('✅ Video uploaded:', data)
-        
-        setSuccess(t.successVideoUpload)
+        setSuccess(t.videoUploaded)
         
         const newStatus = data.data?.kycStatus || 'PENDING'
         setKycStatus(newStatus)
         setKycVideoUrl(data.data?.kycVideoUrl)
-        setCapturedVideo(null)
         
         if (onKYCSubmitted) {
           onKYCSubmitted(newStatus)
@@ -357,19 +282,20 @@ export default function KYCModal({
         }, 2000)
       } else {
         const errorData = await response.json()
-        setError(errorData.error || t.errorUpload)
+        setError(errorData.error || 'Upload failed')
+        setCapturedVideo(null)
       }
     } catch (error) {
       console.error('❌ Video upload error:', error)
-      setError(t.errorUpload)
+      setError('Upload failed')
+      setCapturedVideo(null)
     } finally {
       setUploading(false)
     }
   }
 
-  // 🆕 Удаление файлов и начало заново
   const handleDeleteFiles = async () => {
-    if (!confirm(t.deleteConfirm)) return
+    if (!confirm(t.startOver + '?')) return
 
     const token = localStorage.getItem('access_token')
 
@@ -389,7 +315,7 @@ export default function KYCModal({
         setKycPhotoUrl(null)
         setKycVideoUrl(null)
         setKycStatus('NOT_SUBMITTED')
-        setSuccess('Files deleted. You can start over.')
+        setSuccess('Deleted')
         setTimeout(() => setSuccess(''), 2000)
       }
     } catch (error) {
@@ -404,9 +330,9 @@ export default function KYCModal({
       case 'PENDING':
         return '#eab308'
       case 'REJECTED':
-        return '#eab308'
+        return '#ef4444'
       default:
-        return 'rgba(255, 255, 255, 0.5)'
+        return '#6b7280'
     }
   }
 
@@ -438,7 +364,7 @@ export default function KYCModal({
 
   if (!isOpen) return null
 
-  // 🆕 Показываем камеру если активен режим съёмки
+  // Показываем камеру если активен режим съёмки
   if (showCamera && captureMode) {
     return (
       <CameraCapture
@@ -468,8 +394,8 @@ export default function KYCModal({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 9999,
-        padding: '20px'
+        zIndex: 10000,
+        padding: isMobile ? '16px' : '20px'
       }}
       onClick={kycStatus === 'APPROVED' ? onClose : null}
     >
@@ -477,42 +403,37 @@ export default function KYCModal({
         style={{
           background: 'rgba(0, 0, 0, 0.95)',
           backdropFilter: 'blur(30px)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          borderRadius: '32px',
-          padding: isMobile ? '28px 20px' : '36px 32px',
-          maxWidth: '650px',
+          border: '1px solid rgba(45, 212, 191, 0.2)',
+          borderRadius: isMobile ? '20px' : '24px',
+          padding: isMobile ? '20px' : '24px',
+          maxWidth: '480px',
           width: '100%',
           maxHeight: '90vh',
           overflowY: 'auto',
-          position: 'relative'
+          position: 'relative',
+          boxShadow: '0 0 40px rgba(45, 212, 191, 0.15)'
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Compact Header */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          marginBottom: '24px'
+          alignItems: 'center',
+          marginBottom: '16px'
         }}>
-          <div>
-            <h2 style={{
-              fontSize: isMobile ? '22px' : '26px',
-              fontWeight: '600',
-              color: '#ffffff',
-              marginBottom: '8px',
-              letterSpacing: '-0.8px'
-            }}>
-              {t.title}
-            </h2>
-            <div style={{
-              fontSize: isMobile ? '13px' : '14px',
-              color: 'rgba(255, 255, 255, 0.6)',
-              marginBottom: '12px'
-            }}>
-              {t.subtitle}
-            </div>
-          </div>
+          <h2 style={{
+            fontSize: isMobile ? '18px' : '20px',
+            fontWeight: '600',
+            color: '#ffffff',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <span style={{ fontSize: '20px' }}>🎫</span>
+            {t.title}
+          </h2>
 
           <button
             onClick={onClose}
@@ -523,8 +444,8 @@ export default function KYCModal({
               color: kycStatus === 'PENDING' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.6)',
               fontSize: '24px',
               cursor: kycStatus === 'PENDING' ? 'not-allowed' : 'pointer',
-              width: '32px',
-              height: '32px',
+              width: '28px',
+              height: '28px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -539,427 +460,280 @@ export default function KYCModal({
         {loading ? (
           <div style={{
             textAlign: 'center',
-            padding: '60px 20px',
+            padding: '40px 20px',
             color: '#2dd4bf',
-            fontSize: isMobile ? '14px' : '15px'
+            fontSize: '14px'
           }}>
             {t.loading}
           </div>
         ) : (
           <>
-            {/* Current Status */}
+            {/* Compact Status */}
             <div style={{
-              background: 'rgba(255, 255, 255, 0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 14px',
+              background: `${getStatusColor(kycStatus)}15`,
               border: `1px solid ${getStatusColor(kycStatus)}40`,
-              borderRadius: '16px',
-              padding: isMobile ? '16px' : '20px',
-              marginBottom: '24px',
-              textAlign: 'center'
+              borderRadius: '12px',
+              marginBottom: '16px'
             }}>
               <div style={{
-                fontSize: isMobile ? '12px' : '13px',
-                color: 'rgba(255, 255, 255, 0.6)',
-                marginBottom: '8px'
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: getStatusColor(kycStatus)
+              }} />
+              <span style={{
+                color: getStatusColor(kycStatus),
+                fontSize: '13px',
+                fontWeight: '600',
+                flex: 1
               }}>
-                {t.currentStatus}
-              </div>
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                background: `${getStatusColor(kycStatus)}20`,
-                border: `1px solid ${getStatusColor(kycStatus)}40`,
-                borderRadius: '12px'
-              }}>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: getStatusColor(kycStatus)
-                }} />
-                <span style={{
-                  color: getStatusColor(kycStatus),
-                  fontSize: isMobile ? '14px' : '15px',
-                  fontWeight: '600'
-                }}>
-                  {getStatusText(kycStatus)}
-                </span>
-              </div>
-
-              {getStatusMessage(kycStatus) && (
-                <div style={{
-                  marginTop: '12px',
-                  fontSize: isMobile ? '12px' : '13px',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  lineHeight: '1.6'
-                }}>
-                  {getStatusMessage(kycStatus)}
-                </div>
-              )}
-
-              {kycStatus === 'REJECTED' && kycRejectionReason && (
-                <div style={{
-                  marginTop: '12px',
-                  padding: '12px',
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '10px',
-                  textAlign: 'left'
-                }}>
-                  <div style={{
-                    fontSize: isMobile ? '11px' : '12px',
-                    color: '#ef4444',
-                    fontWeight: '600',
-                    marginBottom: '4px'
-                  }}>
-                    {t.rejectionReason}
-                  </div>
-                  <div style={{
-                    fontSize: isMobile ? '12px' : '13px',
-                    color: 'rgba(255, 255, 255, 0.8)'
-                  }}>
-                    {kycRejectionReason}
-                  </div>
-                </div>
-              )}
+                {getStatusText(kycStatus)}
+              </span>
             </div>
 
-            {/* 🆕 KYC Process Steps */}
-            {kycStatus !== 'APPROVED' && kycStatus !== 'PENDING' && (
-              <>
-                <div style={{
-                  fontSize: isMobile ? '12px' : '13px',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  lineHeight: '1.6',
-                  marginBottom: '20px',
-                  textAlign: 'center'
-                }}>
-                  {t.description}
-                </div>
+            {getStatusMessage(kycStatus) && (
+              <div style={{
+                fontSize: '12px',
+                color: 'rgba(255, 255, 255, 0.7)',
+                marginBottom: '16px',
+                padding: '10px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                borderRadius: '10px',
+                lineHeight: '1.5'
+              }}>
+                {getStatusMessage(kycStatus)}
+              </div>
+            )}
 
+            {kycStatus === 'REJECTED' && kycRejectionReason && (
+              <div style={{
+                marginBottom: '16px',
+                padding: '10px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '10px'
+              }}>
+                <div style={{
+                  fontSize: '11px',
+                  color: '#ef4444',
+                  fontWeight: '600',
+                  marginBottom: '4px'
+                }}>
+                  {t.reason}:
+                </div>
+                <div style={{
+                  fontSize: '12px',
+                  color: 'rgba(255, 255, 255, 0.8)'
+                }}>
+                  {kycRejectionReason}
+                </div>
+              </div>
+            )}
+
+            {/* Compact Steps */}
+            {kycStatus !== 'APPROVED' && kycStatus !== 'PENDING' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {/* Step 1: Photo */}
                 <div style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '16px',
-                  padding: isMobile ? '16px' : '20px',
-                  marginBottom: '16px'
+                  background: kycPhotoUrl ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+                  border: `1px solid ${kycPhotoUrl ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+                  borderRadius: '12px',
+                  padding: '12px'
                 }}>
                   <div style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
                     alignItems: 'center',
-                    marginBottom: '12px'
+                    gap: '10px',
+                    marginBottom: '8px'
                   }}>
-                    <h3 style={{
-                      fontSize: isMobile ? '14px' : '15px',
+                    <span style={{ fontSize: '18px' }}>
+                      {kycPhotoUrl ? '✅' : '📸'}
+                    </span>
+                    <span style={{
+                      fontSize: '14px',
                       fontWeight: '600',
                       color: '#ffffff',
-                      margin: 0
+                      flex: 1
                     }}>
-                      {t.step1Title}
-                    </h3>
-                    {(kycPhotoUrl || capturedPhoto) && (
-                      <span style={{
-                        fontSize: '11px',
-                        color: '#22c55e',
-                        background: 'rgba(34, 197, 94, 0.15)',
-                        padding: '4px 10px',
-                        borderRadius: '12px'
-                      }}>
-                        {t.stepCompleted}
-                      </span>
-                    )}
-                  </div>
-
-                  {capturedPhoto && (
-                    <div style={{
-                      marginBottom: '12px',
-                      textAlign: 'center'
-                    }}>
-                      <img
-                        src={URL.createObjectURL(capturedPhoto.blob)}
-                        alt="Captured"
-                        style={{
-                          maxWidth: '100%',
-                          maxHeight: '200px',
-                          borderRadius: '12px'
-                        }}
-                      />
-                      <div style={{
-                        marginTop: '8px',
-                        fontSize: '12px',
-                        color: '#22c55e'
-                      }}>
-                        {t.photoTaken}
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{
-                    display: 'flex',
-                    gap: '8px',
-                    marginBottom: '12px'
-                  }}>
-                    <button
-                      onClick={() => {
-                        setCaptureMode('photo')
-                        setShowCamera(true)
-                      }}
-                      disabled={uploading}
-                      style={{
-                        flex: 1,
-                        padding: '12px',
-                        background: capturedPhoto 
-                          ? 'rgba(45, 212, 191, 0.15)' 
-                          : 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
-                        border: 'none',
-                        borderRadius: '12px',
-                        color: capturedPhoto ? '#2dd4bf' : '#000000',
-                        fontSize: isMobile ? '13px' : '14px',
-                        fontWeight: '600',
-                        cursor: uploading ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {capturedPhoto ? t.retakePhoto : t.takePhoto}
-                    </button>
-                    
-                    {capturedPhoto && !kycPhotoUrl && (
+                      {t.step1}
+                    </span>
+                    {!kycPhotoUrl && (
                       <button
-                        onClick={handleUploadPhoto}
+                        onClick={() => {
+                          setCaptureMode('photo')
+                          setShowCamera(true)
+                        }}
                         disabled={uploading}
                         style={{
-                          flex: 1,
-                          padding: '12px',
-                          background: uploading
-                            ? 'rgba(45, 212, 191, 0.3)'
-                            : 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
+                          padding: '6px 12px',
+                          background: 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
                           border: 'none',
-                          borderRadius: '12px',
-                          color: uploading ? 'rgba(0, 0, 0, 0.5)' : '#000000',
-                          fontSize: isMobile ? '13px' : '14px',
+                          borderRadius: '8px',
+                          color: '#000000',
+                          fontSize: '12px',
                           fontWeight: '600',
-                          cursor: uploading ? 'not-allowed' : 'pointer'
+                          cursor: uploading ? 'not-allowed' : 'pointer',
+                          whiteSpace: 'nowrap'
                         }}
                       >
-                        {uploading ? t.uploading : t.uploadPhoto}
+                        {capturedPhoto ? t.retake : t.takePhoto}
                       </button>
                     )}
                   </div>
-
-                  <ul style={{
-                    margin: 0,
-                    paddingLeft: '20px',
-                    fontSize: isMobile ? '11px' : '12px',
-                    color: 'rgba(255, 255, 255, 0.6)',
-                    lineHeight: '1.8'
+                  <div style={{
+                    fontSize: '11px',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    lineHeight: '1.5'
                   }}>
-                    <li>{t.photoReq1}</li>
-                    <li>{t.photoReq2}</li>
-                  </ul>
+                    {t.photoReq}
+                  </div>
                 </div>
 
                 {/* Step 2: Video */}
                 <div style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '16px',
-                  padding: isMobile ? '16px' : '20px',
-                  marginBottom: '20px',
+                  background: kycVideoUrl ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.03)',
+                  border: `1px solid ${kycVideoUrl ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+                  borderRadius: '12px',
+                  padding: '12px',
                   opacity: kycPhotoUrl ? 1 : 0.5
                 }}>
                   <div style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
                     alignItems: 'center',
-                    marginBottom: '12px'
+                    gap: '10px',
+                    marginBottom: '8px'
                   }}>
-                    <h3 style={{
-                      fontSize: isMobile ? '14px' : '15px',
+                    <span style={{ fontSize: '18px' }}>
+                      {kycVideoUrl ? '✅' : '🎥'}
+                    </span>
+                    <span style={{
+                      fontSize: '14px',
                       fontWeight: '600',
                       color: '#ffffff',
-                      margin: 0
+                      flex: 1
                     }}>
-                      {t.step2Title}
-                    </h3>
-                    {kycVideoUrl && (
-                      <span style={{
-                        fontSize: '11px',
-                        color: '#22c55e',
-                        background: 'rgba(34, 197, 94, 0.15)',
-                        padding: '4px 10px',
-                        borderRadius: '12px'
-                      }}>
-                        {t.stepCompleted}
-                      </span>
-                    )}
-                  </div>
-
-                  {capturedVideo && (
-                    <div style={{
-                      marginBottom: '12px',
-                      textAlign: 'center'
-                    }}>
-                      <video
-                        src={URL.createObjectURL(capturedVideo.blob)}
-                        controls
-                        style={{
-                          maxWidth: '100%',
-                          maxHeight: '200px',
-                          borderRadius: '12px'
-                        }}
-                      />
-                      <div style={{
-                        marginTop: '8px',
-                        fontSize: '12px',
-                        color: '#22c55e'
-                      }}>
-                        {t.videoRecorded}
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{
-                    display: 'flex',
-                    gap: '8px',
-                    marginBottom: '12px'
-                  }}>
-                    <button
-                      onClick={() => {
-                        if (!kycPhotoUrl) {
-                          setError(t.errorNoPhoto)
-                          return
-                        }
-                        setCaptureMode('video')
-                        setShowCamera(true)
-                      }}
-                      disabled={!kycPhotoUrl || uploading}
-                      style={{
-                        flex: 1,
-                        padding: '12px',
-                        background: !kycPhotoUrl 
-                          ? 'rgba(255, 255, 255, 0.1)' 
-                          : (capturedVideo 
-                              ? 'rgba(45, 212, 191, 0.15)' 
-                              : 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)'),
-                        border: 'none',
-                        borderRadius: '12px',
-                        color: !kycPhotoUrl 
-                          ? 'rgba(255, 255, 255, 0.3)' 
-                          : (capturedVideo ? '#2dd4bf' : '#000000'),
-                        fontSize: isMobile ? '13px' : '14px',
-                        fontWeight: '600',
-                        cursor: (!kycPhotoUrl || uploading) ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {capturedVideo ? t.retakeVideo : t.recordVideo}
-                    </button>
-                    
-                    {capturedVideo && !kycVideoUrl && (
+                      {t.step2}
+                    </span>
+                    {!kycVideoUrl && (
                       <button
-                        onClick={handleUploadVideo}
-                        disabled={uploading}
+                        onClick={() => {
+                          if (!kycPhotoUrl) return
+                          setCaptureMode('video')
+                          setShowCamera(true)
+                        }}
+                        disabled={!kycPhotoUrl || uploading}
                         style={{
-                          flex: 1,
-                          padding: '12px',
-                          background: uploading
-                            ? 'rgba(45, 212, 191, 0.3)'
+                          padding: '6px 12px',
+                          background: !kycPhotoUrl 
+                            ? 'rgba(255, 255, 255, 0.1)' 
                             : 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
                           border: 'none',
-                          borderRadius: '12px',
-                          color: uploading ? 'rgba(0, 0, 0, 0.5)' : '#000000',
-                          fontSize: isMobile ? '13px' : '14px',
+                          borderRadius: '8px',
+                          color: !kycPhotoUrl ? 'rgba(255, 255, 255, 0.3)' : '#000000',
+                          fontSize: '12px',
                           fontWeight: '600',
-                          cursor: uploading ? 'not-allowed' : 'pointer'
+                          cursor: (!kycPhotoUrl || uploading) ? 'not-allowed' : 'pointer',
+                          whiteSpace: 'nowrap'
                         }}
                       >
-                        {uploading ? t.uploading : t.uploadVideo}
+                        {capturedVideo ? t.retake : t.recordVideo}
                       </button>
                     )}
                   </div>
-
-                  <ul style={{
-                    margin: 0,
-                    paddingLeft: '20px',
-                    fontSize: isMobile ? '11px' : '12px',
-                    color: 'rgba(255, 255, 255, 0.6)',
-                    lineHeight: '1.8'
+                  <div style={{
+                    fontSize: '11px',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    lineHeight: '1.5'
                   }}>
-                    <li>{t.videoReq1}</li>
-                    <li>{t.videoReq2}</li>
-                    <li>{t.videoReq3}</li>
-                  </ul>
+                    {t.videoReq}
+                  </div>
                 </div>
-
-                {/* Error/Success Messages */}
-                {error && (
-                  <div style={{
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: '12px',
-                    padding: '12px 16px',
-                    marginBottom: '16px',
-                    color: '#ef4444',
-                    fontSize: isMobile ? '12px' : '13px'
-                  }}>
-                    {error}
-                  </div>
-                )}
-
-                {success && (
-                  <div style={{
-                    background: 'rgba(34, 197, 94, 0.15)',
-                    border: '1px solid rgba(34, 197, 94, 0.3)',
-                    borderRadius: '12px',
-                    padding: '12px 16px',
-                    marginBottom: '16px',
-                    color: '#22c55e',
-                    fontSize: isMobile ? '12px' : '13px'
-                  }}>
-                    {success}
-                  </div>
-                )}
-
-                {/* Delete Files Button */}
-                {(kycPhotoUrl || kycVideoUrl || capturedPhoto || capturedVideo) && kycStatus === 'REJECTED' && (
-                  <button
-                    onClick={handleDeleteFiles}
-                    style={{
-                      width: '100%',
-                      padding: isMobile ? '12px' : '14px',
-                      background: 'rgba(239, 68, 68, 0.15)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      borderRadius: '16px',
-                      color: '#ef4444',
-                      fontSize: isMobile ? '13px' : '14px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      marginTop: '12px'
-                    }}
-                  >
-                    {t.deleteFiles}
-                  </button>
-                )}
-              </>
+              </div>
             )}
 
-            {/* Close button for APPROVED status */}
+            {/* Messages */}
+            {error && (
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '10px',
+                padding: '10px',
+                marginTop: '12px',
+                color: '#ef4444',
+                fontSize: '12px'
+              }}>
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div style={{
+                background: 'rgba(34, 197, 94, 0.15)',
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+                borderRadius: '10px',
+                padding: '10px',
+                marginTop: '12px',
+                color: '#22c55e',
+                fontSize: '12px'
+              }}>
+                {success}
+              </div>
+            )}
+
+            {uploading && (
+              <div style={{
+                marginTop: '12px',
+                textAlign: 'center',
+                color: '#2dd4bf',
+                fontSize: '13px',
+                padding: '10px',
+                background: 'rgba(45, 212, 191, 0.1)',
+                borderRadius: '10px'
+              }}>
+                {t.uploading}
+              </div>
+            )}
+
+            {/* Delete Button for REJECTED */}
+            {kycStatus === 'REJECTED' && (
+              <button
+                onClick={handleDeleteFiles}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '10px',
+                  color: '#ef4444',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  marginTop: '12px'
+                }}
+              >
+                {t.startOver}
+              </button>
+            )}
+
+            {/* Close Button for APPROVED */}
             {kycStatus === 'APPROVED' && (
               <button
                 onClick={onClose}
                 style={{
                   width: '100%',
-                  padding: isMobile ? '14px' : '16px',
+                  padding: '12px',
                   background: 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
                   border: 'none',
-                  borderRadius: '16px',
+                  borderRadius: '12px',
                   color: '#000000',
-                  fontSize: isMobile ? '14px' : '15px',
+                  fontSize: '14px',
                   fontWeight: '600',
                   cursor: 'pointer',
-                  transition: 'all 0.3s',
-                  marginTop: '20px'
+                  marginTop: '16px'
                 }}
               >
                 {t.close}

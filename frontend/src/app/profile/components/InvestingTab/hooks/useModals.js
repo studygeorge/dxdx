@@ -7,13 +7,15 @@ export const useModals = (onModalStateChange) => {
   const [showEarlyWithdrawModal, setShowEarlyWithdrawModal] = useState(false)
   const [showPartialWithdrawModal, setShowPartialWithdrawModal] = useState(false)
   const [showWithdrawBonusModal, setShowWithdrawBonusModal] = useState(false)
+  const [showReinvestModal, setShowReinvestModal] = useState(false)
   const [showKYCModal, setShowKYCModal] = useState(false)
   const [showPaymentStep, setShowPaymentStep] = useState(false)
   const [showConfirmationStep, setShowConfirmationStep] = useState(false)
 
   const hasModal = showInvestForm || showKYCModal || showPaymentStep || 
                    showConfirmationStep || showWithdrawModal || showUpgradeModal || 
-                   showEarlyWithdrawModal || showPartialWithdrawModal || showWithdrawBonusModal
+                   showEarlyWithdrawModal || showPartialWithdrawModal || showWithdrawBonusModal ||
+                   showReinvestModal
 
   useEffect(() => {
     if (onModalStateChange) {
@@ -28,6 +30,7 @@ export const useModals = (onModalStateChange) => {
     setShowEarlyWithdrawModal(false)
     setShowPartialWithdrawModal(false)
     setShowWithdrawBonusModal(false)
+    setShowReinvestModal(false)
     setShowKYCModal(false)
     setShowPaymentStep(false)
     setShowConfirmationStep(false)
@@ -46,6 +49,8 @@ export const useModals = (onModalStateChange) => {
     setShowPartialWithdrawModal,
     showWithdrawBonusModal,
     setShowWithdrawBonusModal,
+    showReinvestModal,
+    setShowReinvestModal,
     showKYCModal,
     setShowKYCModal,
     showPaymentStep,

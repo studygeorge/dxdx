@@ -173,10 +173,27 @@ export class ReadInvestmentsController {
           const isBonusUnlocked = totalDaysPassed >= halfDurationDays
           const bonusWithdrawn = inv.bonusWithdrawn || false
           
+          // 🆕 ПЕРЕСЧЁТ effectiveROI с учётом duration bonus
+          // Проблема: в БД может быть неправильное значение effectiveROI
+          // Решение: пересчитываем на основе roi + duration bonus
+          const getDurationBonus = (duration: number): number => {
+            if (duration === 6) return 1.5
+            if (duration === 12) return 3
+            return 0
+          }
+          
+          const baseROI = Number(inv.roi)
+          const durationBonus = getDurationBonus(inv.duration)
+          const correctEffectiveROI = baseROI + durationBonus
+          
           console.log(`💰 Investment ${inv.id.substring(0, 8)}... (${inv.plan.name}):`, {
             status: inv.status,
             amount: Number(inv.amount),
-            effectiveROI: Number(inv.effectiveROI),
+            roi: baseROI,
+            duration: inv.duration,
+            durationBonus: durationBonus,
+            effectiveROI_DB: Number(inv.effectiveROI),
+            effectiveROI_Corrected: correctEffectiveROI,
             daysPassed,
             daysRemaining,
             currentReturn: currentReturn.toFixed(2),
@@ -201,7 +218,7 @@ export class ReadInvestmentsController {
             bonusUnlockedAt: inv.bonusUnlockedAt,
             bonusWithdrawn: inv.bonusWithdrawn,
             isBonusUnlocked,
-            effectiveROI: inv.effectiveROI,
+            effectiveROI: correctEffectiveROI,  // 🆕 Используем пересчитанное значение
             status: inv.status,
             startDate: inv.startDate,
             endDate: inv.endDate,

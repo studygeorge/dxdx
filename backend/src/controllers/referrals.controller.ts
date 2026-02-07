@@ -297,6 +297,270 @@ export class ReferralsController {
     }
   }
 
+  // ✅ POST /bulk-withdraw - Массовый вывод всех доступных бонусов
+  static async bulkWithdraw(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+      const { trc20Address } = request.body as { trc20Address: string }
+
+      console.log('💰 Bulk withdrawal request:', { userId, trc20Address })
+
+      if (!trc20Address || !trc20Address.trim()) {
+        return reply.code(400).send({
+          success: false,
+          error: 'TRC-20 address is required'
+        })
+      }
+
+      // Найти все доступные бонусы (не выведенные + прошло 31 день)
+      const earnings = await prisma.referralEarning.findMany({
+        where: {
+          referrerId: userId,
+          withdrawn: false
+        },
+        include: {
+          investment: true,
+          user: true
+        }
+      })
+
+      if (earnings.length === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'No available bonuses to withdraw'
+        })
+      }
+
+      const now = new Date()
+      const availableEarnings = earnings.filter(earning => {
+        if (!earning.investment?.createdAt) return false
+        const investmentDate = new Date(earning.investment.createdAt)
+        const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+        return daysPassed >= 31
+      })
+
+      if (availableEarnings.length === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'No bonuses available yet (31 days required)'
+        })
+      }
+
+      const totalAmount = availableEarnings.reduce((sum, e) => sum + Number(e.amount), 0)
+
+      // Обновить все записи
+      await prisma.referralEarning.updateMany({
+        where: {
+          id: { in: availableEarnings.map(e => e.id) }
+        },
+        data: {
+          withdrawn: true,
+          withdrawnAt: now,
+          status: 'COMPLETED'
+        }
+      })
+
+      // Создать запрос на вывод
+      const withdrawalRequest = await prisma.referralWithdrawalRequest.create({
+        data: {
+          userId,
+          amount: totalAmount,
+          trc20Address: trc20Address.trim(),
+          status: 'PENDING'
+        }
+      })
+
+      // Создать запись в истории аудита
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'REFERRAL_BULK_WITHDRAWAL',
+          resource: 'REFERRAL',
+          details: JSON.stringify({
+            withdrawalId: withdrawalRequest.id,
+            totalAmount,
+            count: availableEarnings.length,
+            trc20Address: trc20Address.trim()
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      console.log('✅ Bulk withdrawal processed:', {
+        userId,
+        count: availableEarnings.length,
+        totalAmount,
+        withdrawalId: withdrawalRequest.id
+      })
+
+      return reply.send({
+        success: true,
+        message: 'Bulk withdrawal request submitted',
+        data: {
+          totalAmount: parseFloat(totalAmount.toFixed(2)),
+          count: availableEarnings.length,
+          withdrawalId: withdrawalRequest.id,
+          status: 'PENDING'
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error processing bulk withdrawal:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to process bulk withdrawal'
+      })
+    }
+  }
+
+  // ✅ POST /reinvest - Реинвестирование всех доступных бонусов
+  static async reinvest(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+      const { amount } = request.body as { amount: number }
+
+      console.log('🔄 Reinvest request:', { userId, amount })
+
+      // Найти все доступные бонусы
+      const earnings = await prisma.referralEarning.findMany({
+        where: {
+          referrerId: userId,
+          withdrawn: false
+        },
+        include: {
+          investment: true
+        }
+      })
+
+      if (earnings.length === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'No available bonuses to reinvest'
+        })
+      }
+
+      const now = new Date()
+      const availableEarnings = earnings.filter(earning => {
+        if (!earning.investment?.createdAt) return false
+        const investmentDate = new Date(earning.investment.createdAt)
+        const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+        return daysPassed >= 31
+      })
+
+      if (availableEarnings.length === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'No bonuses available yet (31 days required)'
+        })
+      }
+
+      const totalAmount = availableEarnings.reduce((sum, e) => sum + Number(e.amount), 0)
+
+      if (Math.abs(totalAmount - amount) > 0.01) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Invalid reinvestment amount'
+        })
+      }
+
+      // Найти подходящий план для реинвестирования
+      const plans = await prisma.stakingPlan.findMany({
+        orderBy: { minAmount: 'asc' }
+      })
+
+      const plan = plans.find(p => 
+        Number(p.minAmount) <= totalAmount && 
+        (!p.maxAmount || Number(p.maxAmount) >= totalAmount)
+      )
+
+      if (!plan) {
+        return reply.code(400).send({
+          success: false,
+          error: 'No suitable plan found for this amount'
+        })
+      }
+
+      // Создать новую инвестицию
+      const newInvestment = await prisma.investment.create({
+        data: {
+          userId,
+          amount: totalAmount,
+          planId: plan.id,
+          duration: 12, // По умолчанию 12 месяцев
+          status: 'ACTIVE',
+          paymentMethod: 'REINVESTMENT',
+          roi: plan.apy,
+          startDate: now,
+          endDate: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
+        }
+      })
+
+      // Обновить все бонусы
+      await prisma.referralEarning.updateMany({
+        where: {
+          id: { in: availableEarnings.map(e => e.id) }
+        },
+        data: {
+          withdrawn: true,
+          withdrawnAt: now,
+          status: 'COMPLETED'
+        }
+      })
+
+      // Создать запись в истории аудита
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'REFERRAL_BONUS_REINVESTED',
+          resource: 'INVESTMENT',
+          details: JSON.stringify({
+            investmentId: newInvestment.id,
+            amount: totalAmount,
+            planId: plan.id,
+            planName: plan.name,
+            count: availableEarnings.length
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      console.log('✅ Referral bonuses reinvested:', {
+        userId,
+        amount: totalAmount,
+        investmentId: newInvestment.id,
+        count: availableEarnings.length
+      })
+
+      return reply.send({
+        success: true,
+        message: 'Bonuses reinvested successfully',
+        data: {
+          investment: {
+            id: newInvestment.id,
+            amount: Number(newInvestment.amount),
+            plan: plan.name,
+            roi: Number(plan.apy),
+            duration: newInvestment.duration,
+            startDate: newInvestment.startDate
+          },
+          bonusesUsed: availableEarnings.length,
+          totalAmount: parseFloat(totalAmount.toFixed(2))
+        }
+      })
+
+    } catch (error: any) {
+      console.error('❌ Error processing reinvestment:', error)
+      request.log.error(error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to process reinvestment'
+      })
+    }
+  }
+
   // ✅ GET /stats - С ПРАВИЛЬНОЙ TIERED-КОМИССИЕЙ ПО ПОРЯДКОВОМУ НОМЕРУ
   static async getReferralStats(request: FastifyRequest, reply: FastifyReply) {
     try {

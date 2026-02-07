@@ -533,10 +533,15 @@ export default function ReferralTab({ isMobile, language, user }) {
     setShowReinvestModal(true)
   }
 
-  const handleReinvestSubmit = async () => {
+  const handleReinvestSubmit = async (investmentId) => {
     const token = localStorage.getItem('access_token')
     if (!token) {
       setWithdrawError(t.authRequired)
+      return { success: false }
+    }
+
+    if (!investmentId) {
+      setWithdrawError(language === 'ru' ? 'Выберите инвестицию' : 'Please select an investment')
       return { success: false }
     }
 
@@ -544,22 +549,6 @@ export default function ReferralTab({ isMobile, language, user }) {
       setSubmitting(true)
       setWithdrawError('')
       setWithdrawSuccess('')
-
-      // Get user's first active investment for reinvest
-      const investmentsResponse = await fetch('https://dxcapital-ai.com/api/v1/investments', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        credentials: 'include'
-      })
-      
-      const investmentsData = await investmentsResponse.json()
-      const activeInvestment = investmentsData.data?.find(inv => inv.status === 'ACTIVE')
-      
-      if (!activeInvestment) {
-        setWithdrawError(language === 'ru' ? 'Нет активных инвестиций для реинвестирования' : 'No active investments for reinvestment')
-        return { success: false }
-      }
 
       const response = await fetch('https://dxcapital-ai.com/api/v1/referrals/reinvest-to-investment', {
         method: 'POST',
@@ -569,7 +558,7 @@ export default function ReferralTab({ isMobile, language, user }) {
         },
         credentials: 'include',
         body: JSON.stringify({
-          investmentId: activeInvestment.id
+          investmentId: investmentId
         })
       })
 
@@ -1400,7 +1389,27 @@ export default function ReferralTab({ isMobile, language, user }) {
         <ReferralBonusWithdrawModal
           bulkMode={true}
           totalAmount={referralData.totalEarnings}
-          availableCount={referralData.level1.length + referralData.level2.length}
+          availableAmount={(() => {
+            // Calculate available earnings (31+ days old)
+            const now = new Date()
+            const allReferrals = [...referralData.level1, ...referralData.level2]
+            const availableEarnings = allReferrals.filter(ref => {
+              if (!ref.investmentDate) return false
+              const daysPassed = Math.floor((now - new Date(ref.investmentDate)) / (1000 * 60 * 60 * 24))
+              return daysPassed >= 31 && !ref.bonusWithdrawn
+            })
+            return availableEarnings.reduce((sum, ref) => sum + (ref.commission || 0), 0)
+          })()}
+          totalCount={referralData.level1.length + referralData.level2.length}
+          availableCount={(() => {
+            const now = new Date()
+            const allReferrals = [...referralData.level1, ...referralData.level2]
+            return allReferrals.filter(ref => {
+              if (!ref.investmentDate) return false
+              const daysPassed = Math.floor((now - new Date(ref.investmentDate)) / (1000 * 60 * 60 * 24))
+              return daysPassed >= 31 && !ref.bonusWithdrawn
+            }).length
+          })()}
           onClose={() => {
             setShowBulkWithdrawModal(false)
             setTrc20Address('')
@@ -1413,7 +1422,7 @@ export default function ReferralTab({ isMobile, language, user }) {
           error={withdrawError}
           success={withdrawSuccess}
           submitting={submitting}
-          t={t}
+          language={language}
           isMobile={isMobile}
         />
       )}
@@ -1421,7 +1430,27 @@ export default function ReferralTab({ isMobile, language, user }) {
       {showReinvestModal && (
         <ReferralBonusReinvestModal
           totalAmount={referralData.totalEarnings}
-          availableCount={referralData.level1.length + referralData.level2.length}
+          availableAmount={(() => {
+            // Calculate available earnings (31+ days old)
+            const now = new Date()
+            const allReferrals = [...referralData.level1, ...referralData.level2]
+            const availableEarnings = allReferrals.filter(ref => {
+              if (!ref.investmentDate) return false
+              const daysPassed = Math.floor((now - new Date(ref.investmentDate)) / (1000 * 60 * 60 * 24))
+              return daysPassed >= 31 && !ref.bonusWithdrawn
+            })
+            return availableEarnings.reduce((sum, ref) => sum + (ref.commission || 0), 0)
+          })()}
+          totalCount={referralData.level1.length + referralData.level2.length}
+          availableCount={(() => {
+            const now = new Date()
+            const allReferrals = [...referralData.level1, ...referralData.level2]
+            return allReferrals.filter(ref => {
+              if (!ref.investmentDate) return false
+              const daysPassed = Math.floor((now - new Date(ref.investmentDate)) / (1000 * 60 * 60 * 24))
+              return daysPassed >= 31 && !ref.bonusWithdrawn
+            }).length
+          })()}
           onClose={() => {
             setShowReinvestModal(false)
             setWithdrawError('')
@@ -1431,7 +1460,7 @@ export default function ReferralTab({ isMobile, language, user }) {
           error={withdrawError}
           success={withdrawSuccess}
           submitting={submitting}
-          t={t}
+          language={language}
           isMobile={isMobile}
         />
       )}

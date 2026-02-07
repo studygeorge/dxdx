@@ -10,6 +10,7 @@ import {
 import InvestmentCard from './wallet/InvestmentCard'
 import UpgradeModal from './wallet/UpgradeModal'
 import { translations } from './wallet/translations'
+import useModals from './InvestingTab/hooks/useModals'
 
 const API_BASE_URL = 'https://dxcapital-ai.com'
 
@@ -17,11 +18,14 @@ export default function WalletTab({ isMobile, language, user, walletAddress }) {
   const [allInvestments, setAllInvestments] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedInvestment, setSelectedInvestment] = useState(null)
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [upgradeError, setUpgradeError] = useState('')
   const [upgradeSuccess, setUpgradeSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [isUpgradeInfoOpen, setIsUpgradeInfoOpen] = useState(false)
+  
+  // Use global modal state from useModals hook
+  const modals = useModals()
+  const { showUpgradeModal, setShowUpgradeModal } = modals
 
   const packages = [
     { name: 'Starter', apy: 14, minAmount: 100, maxAmount: 999 },

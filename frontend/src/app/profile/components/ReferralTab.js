@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import ReferralBonusWithdrawModal from './wallet/ReferralBonusWithdrawModal'
+import ReferralBonusReinvestModal from './wallet/ReferralBonusReinvestModal'
 
 export default function ReferralTab({ isMobile, language, user }) {
   const [referralData, setReferralData] = useState({
@@ -17,6 +18,8 @@ export default function ReferralTab({ isMobile, language, user }) {
   const [copiedLink, setCopiedLink] = useState(false)
   const [expandedLevel, setExpandedLevel] = useState(null)
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [showReinvestModal, setShowReinvestModal] = useState(false)
+  const [showBulkWithdrawModal, setShowBulkWithdrawModal] = useState(false)
   const [selectedReferral, setSelectedReferral] = useState(null)
   const [trc20Address, setTrc20Address] = useState('')
   const [withdrawError, setWithdrawError] = useState('')
@@ -461,28 +464,32 @@ export default function ReferralTab({ isMobile, language, user }) {
 
   const handleBulkWithdrawAll = async () => {
     if (referralData.totalEarnings <= 0) {
-      alert(t.noBonuses)
       return
     }
+    setShowBulkWithdrawModal(true)
+  }
 
-    const address = prompt(
-      language === 'ru' 
-        ? 'Введите TRC-20 адрес для вывода всех бонусов:' 
-        : 'Enter TRC-20 address to withdraw all bonuses:'
-    )
+  const handleBulkWithdrawSubmit = async (e) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
 
-    if (!address || !address.trim()) {
+    if (!trc20Address || !trc20Address.trim()) {
+      setWithdrawError(t.trc20Placeholder)
       return
     }
 
     const token = localStorage.getItem('access_token')
     if (!token) {
-      alert(t.authRequired)
+      setWithdrawError(t.authRequired)
       return
     }
 
     try {
-      setLoading(true)
+      setSubmitting(true)
+      setWithdrawError('')
+      setWithdrawSuccess('')
 
       const response = await fetch('https://dxcapital-ai.com/api/v1/referrals/bulk-withdraw', {
         method: 'POST',
@@ -492,50 +499,51 @@ export default function ReferralTab({ isMobile, language, user }) {
         },
         credentials: 'include',
         body: JSON.stringify({
-          trc20Address: address.trim()
+          trc20Address: trc20Address.trim()
         })
       })
 
       const result = await response.json()
 
       if (response.ok && result.success) {
-        alert(
-          language === 'ru'
-            ? `${t.bulkWithdrawSuccess} Сумма: ${result.data.totalAmount} USDT`
-            : `${t.bulkWithdrawSuccess} Amount: ${result.data.totalAmount} USDT`
-        )
-        fetchReferralData()
+        setWithdrawSuccess(t.bulkWithdrawSuccess)
+        setTrc20Address('')
+        setTimeout(() => {
+          setShowBulkWithdrawModal(false)
+          fetchReferralData()
+        }, 2000)
+        return { success: true, data: result.data }
       } else {
-        alert(result.error || t.withdrawError)
+        setWithdrawError(result.error || t.withdrawError)
+        return { success: false, error: result.error }
       }
     } catch (error) {
       console.error('Bulk withdrawal error:', error)
-      alert(language === 'ru' ? 'Ошибка сети' : 'Network error')
+      setWithdrawError(language === 'ru' ? 'Ошибка сети' : 'Network error')
+      return { success: false, error: error.message }
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
   const handleReinvestBonuses = async () => {
     if (referralData.totalEarnings <= 0) {
-      alert(t.noBonuses)
       return
     }
+    setShowReinvestModal(true)
+  }
 
-    const confirm = window.confirm(
-      `${t.confirmReinvest}\n\n${referralData.totalEarnings.toFixed(2)} USDT`
-    )
-
-    if (!confirm) return
-
+  const handleReinvestSubmit = async () => {
     const token = localStorage.getItem('access_token')
     if (!token) {
-      alert(t.authRequired)
-      return
+      setWithdrawError(t.authRequired)
+      return { success: false }
     }
 
     try {
-      setLoading(true)
+      setSubmitting(true)
+      setWithdrawError('')
+      setWithdrawSuccess('')
 
       const response = await fetch('https://dxcapital-ai.com/api/v1/referrals/reinvest', {
         method: 'POST',
@@ -552,16 +560,22 @@ export default function ReferralTab({ isMobile, language, user }) {
       const result = await response.json()
 
       if (response.ok && result.success) {
-        alert(t.reinvestSuccess)
-        fetchReferralData()
+        setWithdrawSuccess(t.reinvestSuccess)
+        setTimeout(() => {
+          setShowReinvestModal(false)
+          fetchReferralData()
+        }, 2000)
+        return { success: true, data: result.data }
       } else {
-        alert(result.error || t.withdrawError)
+        setWithdrawError(result.error || t.withdrawError)
+        return { success: false, error: result.error }
       }
     } catch (error) {
       console.error('Reinvest error:', error)
-      alert(language === 'ru' ? 'Ошибка сети' : 'Network error')
+      setWithdrawError(language === 'ru' ? 'Ошибка сети' : 'Network error')
+      return { success: false, error: error.message }
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
@@ -1358,6 +1372,46 @@ export default function ReferralTab({ isMobile, language, user }) {
           onSubmit={handleSubmitWithdrawal}
           trc20Address={trc20Address}
           setTrc20Address={setTrc20Address}
+          error={withdrawError}
+          success={withdrawSuccess}
+          submitting={submitting}
+          t={t}
+          isMobile={isMobile}
+        />
+      )}
+
+      {showBulkWithdrawModal && (
+        <ReferralBonusWithdrawModal
+          bulkMode={true}
+          totalAmount={referralData.totalEarnings}
+          availableCount={referralData.level1.length + referralData.level2.length}
+          onClose={() => {
+            setShowBulkWithdrawModal(false)
+            setTrc20Address('')
+            setWithdrawError('')
+            setWithdrawSuccess('')
+          }}
+          onSubmit={handleBulkWithdrawSubmit}
+          trc20Address={trc20Address}
+          setTrc20Address={setTrc20Address}
+          error={withdrawError}
+          success={withdrawSuccess}
+          submitting={submitting}
+          t={t}
+          isMobile={isMobile}
+        />
+      )}
+
+      {showReinvestModal && (
+        <ReferralBonusReinvestModal
+          totalAmount={referralData.totalEarnings}
+          availableCount={referralData.level1.length + referralData.level2.length}
+          onClose={() => {
+            setShowReinvestModal(false)
+            setWithdrawError('')
+            setWithdrawSuccess('')
+          }}
+          onSubmit={handleReinvestSubmit}
           error={withdrawError}
           success={withdrawSuccess}
           submitting={submitting}

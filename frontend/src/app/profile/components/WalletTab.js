@@ -14,7 +14,7 @@ import { useModals } from './InvestingTab/hooks/useModals'
 
 const API_BASE_URL = 'https://dxcapital-ai.com'
 
-export default function WalletTab({ isMobile, language, user, walletAddress }) {
+export default function WalletTab({ isMobile, language, user, walletAddress, onModalStateChange }) {
   const [allInvestments, setAllInvestments] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedInvestment, setSelectedInvestment] = useState(null)
@@ -23,8 +23,8 @@ export default function WalletTab({ isMobile, language, user, walletAddress }) {
   const [submitting, setSubmitting] = useState(false)
   const [isUpgradeInfoOpen, setIsUpgradeInfoOpen] = useState(false)
   
-  // Use global modal state from useModals hook
-  const modals = useModals()
+  // Use global modal state from useModals hook with callback to ProfileLayout
+  const modals = useModals(onModalStateChange)
   const { showUpgradeModal, setShowUpgradeModal } = modals
 
   const packages = [

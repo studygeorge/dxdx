@@ -194,7 +194,7 @@ export default function ProfileLayout({ isMobile }) {
         return <ReferralTab isMobile={isMobile} language={language} user={user} />
       
       case 'upgrade':
-        return <WalletTab isMobile={isMobile} language={language} user={user} walletAddress={walletAddress} />
+        return <WalletTab isMobile={isMobile} language={language} user={user} walletAddress={walletAddress} onModalStateChange={setHasOpenModal} />
       
       default:
         return null

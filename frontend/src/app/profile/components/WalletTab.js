@@ -10,7 +10,7 @@ import {
 import InvestmentCard from './wallet/InvestmentCard'
 import UpgradeModal from './wallet/UpgradeModal'
 import { translations } from './wallet/translations'
-import useModals from './InvestingTab/hooks/useModals'
+import { useModals } from './InvestingTab/hooks/useModals'
 
 const API_BASE_URL = 'https://dxcapital-ai.com'
 

@@ -9,7 +9,7 @@ import WithdrawBonusModal from '../wallet/WithdrawBonusModal'
 import ReinvestModal from './components/ReinvestModal' // ✅ ДОБАВЛЕНО
 import InvestmentPlansGrid from './components/InvestmentPlansGrid'
 import InvestmentsList from './components/InvestmentsList'
-import InvestForm from './components/InvestForm'
+import InvestForm from './components/InvestForm-Compact' // ✅ КОМПАКТНАЯ ВЕРСИЯ
 import PaymentStep from './components/PaymentStep'
 import ConfirmationStep from './components/ConfirmationStep'
 import { useInvestments } from './hooks/useInvestments'
@@ -956,9 +956,9 @@ export default function InvestingTab({
               border: '1px solid rgba(255, 255, 255, 0.15)',
               borderRadius: '32px',
               padding: isMobile ? '28px 20px' : '36px 32px',
-              maxWidth: '500px',
+              maxWidth: isMobile ? '500px' : '900px',
               width: '100%',
-              maxHeight: '90vh',
+              maxHeight: '95vh',
               overflowY: 'auto',
               position: 'relative'
             }} onClick={(e) => e.stopPropagation()}>

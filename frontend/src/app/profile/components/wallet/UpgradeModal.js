@@ -69,17 +69,25 @@ const UpgradeModal = ({
     setDurationUpgradeSuccess(false);
   }, [upgradeType]);
 
-  // 🆕 Вычисление даты активации при изменении выбранного пакета
+  // 🆕 Вычисление даты активации при изменении выбранного пакета или длительности
   useEffect(() => {
+    // Для апгрейда плана (amount upgrade)
     if (selectedTargetPackage && selectedTargetPackage !== investment?.planName) {
       const nextActivation = getNextActivationDate();
       setActivationDate(nextActivation);
       setDaysUntilActivation(getDaysUntilActivation(nextActivation));
-    } else {
+    } 
+    // Для апгрейда длительности (duration upgrade)
+    else if (selectedDuration && parseInt(selectedDuration) !== currentDuration) {
+      const nextActivation = getNextActivationDate();
+      setActivationDate(nextActivation);
+      setDaysUntilActivation(getDaysUntilActivation(nextActivation));
+    }
+    else {
       setActivationDate(null);
       setDaysUntilActivation(0);
     }
-  }, [selectedTargetPackage, investment?.planName]);
+  }, [selectedTargetPackage, investment?.planName, selectedDuration, currentDuration]);
 
   if (!investment) return null;
 
@@ -445,7 +453,7 @@ const UpgradeModal = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 9999,
+        zIndex: 10000,
         padding: '20px'
       }}
       onClick={onClose}
@@ -1387,6 +1395,83 @@ const UpgradeModal = ({
                           })}
                         </div>
                       </div>
+
+                      {/* 🆕 ACTIVATION DATE BANNER FOR DURATION UPGRADE */}
+                      {activationDate && selectedDuration && (
+                        <div style={{
+                          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(251, 191, 36, 0.15) 100%)',
+                          border: '1px solid rgba(245, 158, 11, 0.4)',
+                          borderRadius: '12px',
+                          padding: '12px 16px',
+                          marginBottom: '16px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                            <div style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              background: '#f59e0b',
+                              animation: 'pulse 2s infinite'
+                            }} />
+                            <div style={{
+                              fontSize: '13px',
+                              fontWeight: '700',
+                              color: '#f59e0b',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>
+                              {t.newROIActivation || 'New ROI Activation Schedule'}
+                            </div>
+                          </div>
+                          
+                          <div style={{
+                            fontSize: '12px',
+                            color: 'rgba(245, 158, 11, 0.9)',
+                            lineHeight: '1.6'
+                          }}>
+                            {durationUpgradeCalc && (
+                              <>
+                                <div style={{ marginBottom: '6px' }}>
+                                  <strong>{t.currentROI || 'Current ROI'}:</strong> {currentEffectiveROI}% APY ({t.activeUntil || 'active until'} {activationDate.toLocaleDateString('ru-RU')})
+                                </div>
+                                <div style={{ marginBottom: '6px' }}>
+                                  <strong>{t.newROI || 'New ROI'}:</strong> {durationUpgradeCalc.newEffectiveROI}% APY
+                                </div>
+                              </>
+                            )}
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              marginTop: '8px',
+                              padding: '6px 10px',
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              borderRadius: '8px'
+                            }}>
+                              <span style={{ fontSize: '16px' }}>📅</span>
+                              <span style={{ fontWeight: '600', color: '#f59e0b' }}>
+                                {t.activatesOn || 'New rate activates on'}: {activationDate.toLocaleDateString('ru-RU')}
+                              </span>
+                            </div>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              marginTop: '6px',
+                              padding: '6px 10px',
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              borderRadius: '8px'
+                            }}>
+                              <span style={{ fontSize: '16px' }}>⏰</span>
+                              <span style={{ fontWeight: '600', color: '#f59e0b' }}>
+                                {daysUntilActivation === 0 
+                                  ? (t.activatingToday || '🎉 Activating today!')
+                                  : `${daysUntilActivation} ${t.daysUntilNewROI || 'days until new ROI'}`}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {durationUpgradeCalc && (
                         <div style={{

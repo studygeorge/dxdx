@@ -29,58 +29,58 @@ INSERT INTO app_schema.staking_plans (
   "updatedAt"
 )
 VALUES
-  -- Beginner Plan (18.5% APY)
+  -- Starter Plan (14% APY)
   (
     gen_random_uuid(), 
-    'Beginner', 
-    18.50, 
+    'Starter', 
+    14.00, 
     100, 
-    1999, 
+    999, 
     'USDT', 
     true, 
-    'Entry level investment package with 18.5% monthly ROI', 
+    'Starter investment package with up to 14% monthly ROI', 
     NOW(), 
     NOW()
   ),
   
-  -- Standard Plan (19% APY)
-  (
-    gen_random_uuid(), 
-    'Standard', 
-    19.00, 
-    2000, 
-    9999, 
-    'USDT', 
-    true, 
-    'Standard investment package with 19% monthly ROI', 
-    NOW(), 
-    NOW()
-  ),
-  
-  -- Advanced Plan (19.5% APY)
+  -- Advanced Plan (17% APY)
   (
     gen_random_uuid(), 
     'Advanced', 
-    19.50, 
-    10000, 
-    49999, 
+    17.00, 
+    1000, 
+    2999, 
     'USDT', 
     true, 
-    'Advanced investment package with 19.5% monthly ROI', 
+    'Advanced investment package with up to 17% monthly ROI', 
     NOW(), 
     NOW()
   ),
   
-  -- VIP Plan (20% APY)
+  -- Pro Plan (20% APY)
   (
     gen_random_uuid(), 
-    'VIP', 
+    'Pro', 
     20.00, 
-    50000, 
+    3000, 
+    5999, 
+    'USDT', 
+    true, 
+    'Pro investment package with up to 20% monthly ROI', 
+    NOW(), 
+    NOW()
+  ),
+  
+  -- Elite Plan (22% APY)
+  (
+    gen_random_uuid(), 
+    'Elite', 
+    22.00, 
+    6000, 
     NULL, 
     'USDT', 
     true, 
-    'VIP investment package with 20% monthly ROI', 
+    'Elite investment package with up to 22% monthly ROI', 
     NOW(), 
     NOW()
   );
@@ -101,10 +101,10 @@ echo ""
 echo "✅ Staking plans seeded successfully!"
 echo ""
 echo "📋 Plans created:"
-echo "  1. Beginner  - 18.5% APY ($100 - $1,999)"
-echo "  2. Standard  - 19.0% APY ($2,000 - $9,999)"
-echo "  3. Advanced  - 19.5% APY ($10,000 - $49,999)"
-echo "  4. VIP       - 20.0% APY ($50,000+)"
+echo "  1. Starter   - 14% APY ($100 - $999)"
+echo "  2. Advanced  - 17% APY ($1,000 - $2,999)"
+echo "  3. Pro       - 20% APY ($3,000 - $5,999)"
+echo "  4. Elite     - 22% APY ($6,000+)"
 echo ""
 echo "🔄 Restarting backend..."
 pm2 restart dxcapai-backend

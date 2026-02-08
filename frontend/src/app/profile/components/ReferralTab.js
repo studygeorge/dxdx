@@ -26,6 +26,8 @@ export default function ReferralTab({ isMobile, language, user }) {
   const [withdrawSuccess, setWithdrawSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [isTokenReady, setIsTokenReady] = useState(false)
+  const [userInvestments, setUserInvestments] = useState([])
+  const [loadingInvestments, setLoadingInvestments] = useState(false)
 
   const translations = {
     en: {
@@ -171,10 +173,36 @@ export default function ReferralTab({ isMobile, language, user }) {
   useEffect(() => {
     if (isTokenReady) {
       fetchReferralData()
+      fetchInvestments()
     } else {
       setLoading(false)
     }
   }, [isTokenReady])
+
+  const fetchInvestments = async () => {
+    const token = localStorage.getItem('access_token')
+    if (!token) return
+
+    try {
+      setLoadingInvestments(true)
+      const response = await fetch('https://dxcapital-ai.com/api/v1/investments/my', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'include'
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        const activeInvestments = data.data?.filter(inv => inv.status === 'ACTIVE') || []
+        setUserInvestments(activeInvestments)
+      }
+    } catch (error) {
+      console.error('Error fetching investments:', error)
+    } finally {
+      setLoadingInvestments(false)
+    }
+  }
 
   const fetchReferralData = async (retryCount = 0) => {
     const MAX_RETRIES = 3
@@ -1462,6 +1490,8 @@ export default function ReferralTab({ isMobile, language, user }) {
           submitting={submitting}
           language={language}
           isMobile={isMobile}
+          userInvestments={userInvestments}
+          loadingInvestments={loadingInvestments}
         />
       )}
     </>

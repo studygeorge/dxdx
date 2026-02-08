@@ -12,12 +12,14 @@ const ReferralBonusReinvestModal = ({
   success,
   submitting,
   language = 'en',
-  isMobile
+  isMobile,
+  userInvestments = null,
+  loadingInvestments: externalLoadingInvestments = false
 }) => {
   const [currentStep, setCurrentStep] = useState(1)
-  const [investments, setInvestments] = useState([])
+  const [investments, setInvestments] = useState(userInvestments || [])
   const [selectedInvestment, setSelectedInvestment] = useState(null)
-  const [loadingInvestments, setLoadingInvestments] = useState(true)
+  const [loadingInvestments, setLoadingInvestments] = useState(!userInvestments)
 
   const translations = {
     en: {
@@ -83,15 +85,23 @@ const ReferralBonusReinvestModal = ({
   const t = translations[language] || translations.en
 
   useEffect(() => {
-    fetchInvestments()
-  }, [])
+    if (userInvestments) {
+      setInvestments(userInvestments)
+      if (userInvestments.length > 0) {
+        setSelectedInvestment(userInvestments[0])
+      }
+      setLoadingInvestments(false)
+    } else {
+      fetchInvestments()
+    }
+  }, [userInvestments])
 
   const fetchInvestments = async () => {
     try {
       setLoadingInvestments(true)
       const token = localStorage.getItem('access_token')
       
-      const response = await fetch('https://dxcapital-ai.com/api/v1/investments', {
+      const response = await fetch('https://dxcapital-ai.com/api/v1/investments/my', {
         headers: {
           'Authorization': `Bearer ${token}`
         },
@@ -162,7 +172,7 @@ const ReferralBonusReinvestModal = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 10001,
+        zIndex: 9999,
         padding: '20px'
       }}
       onClick={(e) => {
@@ -309,7 +319,7 @@ const ReferralBonusReinvestModal = ({
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                <span style={{ fontSize: '28px' }}>🔄</span>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: '#2dd4bf' }}>↻</div>
               </div>
 
               <h2 style={{
@@ -405,7 +415,7 @@ const ReferralBonusReinvestModal = ({
                 {t.selectInvestment}:
               </div>
 
-              {loadingInvestments ? (
+              {loadingInvestments || externalLoadingInvestments ? (
                 <div style={{
                   textAlign: 'center',
                   padding: '32px',
@@ -425,7 +435,7 @@ const ReferralBonusReinvestModal = ({
                   <div style={{
                     fontSize: '40px',
                     marginBottom: '12px'
-                  }}>📭</div>
+                  }}>!</div>
                   <div style={{
                     fontSize: '15px',
                     color: '#ef4444',

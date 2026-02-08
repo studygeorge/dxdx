@@ -350,7 +350,7 @@ export class ReferralsController {
       const totalAmount = availableEarnings.reduce((sum, e) => sum + Number(e.amount), 0)
 
       // ✅ КРИТИЧНО: Используем транзакцию для атомарности операций
-      const withdrawalRequest = await prisma.$transaction(async (tx) => {
+      const withdrawalRequests = await prisma.$transaction(async (tx) => {
         // Обновить все записи
         await tx.referralEarning.updateMany({
           where: {
@@ -363,15 +363,22 @@ export class ReferralsController {
           }
         })
 
-        // Создать запрос на вывод
-        const withdrawal = await tx.referralWithdrawalRequest.create({
-          data: {
-            userId,
-            amount: totalAmount,
-            trc20Address: trc20Address.trim(),
-            status: 'PENDING'
-          }
-        })
+        // Создать запросы на вывод для каждого earning
+        const withdrawals = await Promise.all(
+          availableEarnings.map(earning => 
+            tx.referralWithdrawalRequest.create({
+              data: {
+                userId,
+                referralUserId: earning.userId,
+                investmentId: earning.investmentId,
+                referralEarningId: earning.id,
+                amount: Number(earning.amount),
+                trc20Address: trc20Address.trim(),
+                status: 'PENDING'
+              }
+            })
+          )
+        )
 
         // Создать запись в истории аудита
         await tx.auditLog.create({
@@ -380,7 +387,7 @@ export class ReferralsController {
             action: 'REFERRAL_BULK_WITHDRAWAL',
             resource: 'REFERRAL',
             details: JSON.stringify({
-              withdrawalId: withdrawal.id,
+              withdrawalIds: withdrawals.map(w => w.id),
               totalAmount,
               count: availableEarnings.length,
               trc20Address: trc20Address.trim()
@@ -390,7 +397,7 @@ export class ReferralsController {
           }
         })
 
-        return withdrawal
+        return withdrawals
       })
 
       // ✅ КРИТИЧНО: Отправить Telegram уведомление ПОСЛЕ успешной транзакции
@@ -416,7 +423,7 @@ export class ReferralsController {
         userId,
         count: availableEarnings.length,
         totalAmount,
-        withdrawalId: withdrawalRequest.id
+        withdrawalIds: withdrawalRequests.map(w => w.id)
       })
 
       return reply.send({
@@ -425,7 +432,7 @@ export class ReferralsController {
         data: {
           totalAmount: parseFloat(totalAmount.toFixed(2)),
           count: availableEarnings.length,
-          withdrawalId: withdrawalRequest.id,
+          withdrawalIds: withdrawalRequests.map(w => w.id),
           status: 'PENDING'
         }
       })
@@ -508,6 +515,7 @@ export class ReferralsController {
       }
 
       // Создать новую инвестицию
+      const expectedReturn = totalAmount * (1 + Number(plan.apy) / 100)
       const newInvestment = await prisma.investment.create({
         data: {
           userId,
@@ -517,6 +525,10 @@ export class ReferralsController {
           status: 'ACTIVE',
           paymentMethod: 'REINVESTMENT',
           roi: plan.apy,
+          expectedReturn,
+          totalReturn: expectedReturn,
+          userWalletAddress: 'REINVESTMENT',
+          adminWalletAddress: 'REINVESTMENT',
           startDate: now,
           endDate: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
         }

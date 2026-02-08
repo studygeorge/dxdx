@@ -173,7 +173,6 @@ export default function ReferralTab({ isMobile, language, user }) {
   useEffect(() => {
     if (isTokenReady) {
       fetchReferralData()
-      fetchInvestments()
     } else {
       setLoading(false)
     }
@@ -557,6 +556,10 @@ export default function ReferralTab({ isMobile, language, user }) {
   const handleReinvestBonuses = async () => {
     if (referralData.totalEarnings <= 0) {
       return
+    }
+    // Fetch investments when modal opens
+    if (userInvestments.length === 0) {
+      fetchInvestments()
     }
     setShowReinvestModal(true)
   }

@@ -54,6 +54,15 @@ export async function withdrawBonusHandler(
 
     console.log(`📊 Investment found: id=${investment.id}, amount=$${Number(investment.amount).toFixed(2)}`)
 
+    // ✅ Проверяем что инвестиция ещё активна (не выведена)
+    if (investment.status !== 'ACTIVE') {
+      return reply.code(400).send({
+        success: false,
+        error: 'Investment is not active anymore',
+        investmentStatus: investment.status
+      })
+    }
+
     const daysRemaining = ValidationUtils.getDaysRemaining(investment.createdAt, 31)
 
     if (daysRemaining > 0) {
@@ -105,7 +114,7 @@ export async function withdrawBonusHandler(
         userId,
         referralUserId,
         investmentId,
-        status: { in: ['APPROVAL', 'COMPLETED'] }  // ✅ Проверяем APPROVAL (ждёт выплаты) и COMPLETED (выплачено)
+        status: { in: ['COMPLETED'] }  // ✅ Проверяем только COMPLETED (вывод уже завершён)
       }
     })
 

@@ -22,7 +22,7 @@ const ReferralBonusWithdrawModal = ({
   const [currentStep, setCurrentStep] = useState(1)
   const [pendingWithdrawalId, setPendingWithdrawalId] = useState(null)
   const [checkingStatus, setCheckingStatus] = useState(false)
-  const [withdrawalStatus, setWithdrawalStatus] = useState('APPROVAL')
+  const [withdrawalStatus, setWithdrawalStatus] = useState('COMPLETED')
   const intervalRef = useRef(null)
 
   const translations = {
@@ -140,20 +140,8 @@ const ReferralBonusWithdrawModal = ({
   }
 
   useEffect(() => {
-    if (currentStep === 2 && pendingWithdrawalId && withdrawalStatus === 'APPROVAL') {
-      checkWithdrawalStatus(pendingWithdrawalId)
-
-      intervalRef.current = setInterval(() => {
-        checkWithdrawalStatus(pendingWithdrawalId)
-      }, 10000)
-
-      return () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current)
-          intervalRef.current = null
-        }
-      }
-    }
+    // ✅ Сразу показываем success screen, не проверяем статус
+    // Backend возвращает COMPLETED сразу
   }, [currentStep, pendingWithdrawalId, withdrawalStatus])
 
   const handleSubmit = async (e) => {
@@ -165,8 +153,8 @@ const ReferralBonusWithdrawModal = ({
     const result = await onSubmit(e)
     
     if (result && result.success) {
-      // ✅ Backend теперь возвращает APPROVAL (ждёт выплаты), показываем success screen
-      setWithdrawalStatus('APPROVAL')
+      // ✅ Backend возвращает COMPLETED сразу, показываем success screen
+      setWithdrawalStatus('COMPLETED')
       setCurrentStep(2)
       
       if (result.data && result.data.withdrawalId) {
@@ -184,7 +172,7 @@ const ReferralBonusWithdrawModal = ({
     }
     setCurrentStep(1)
     setPendingWithdrawalId(null)
-    setWithdrawalStatus('APPROVAL')
+    setWithdrawalStatus('COMPLETED')
     setCheckingStatus(false)
     setTrc20Address('')
     onClose()
@@ -192,29 +180,27 @@ const ReferralBonusWithdrawModal = ({
 
   const getStatusMessage = () => {
     switch (withdrawalStatus) {
-      case 'PENDING':
-        return t.statusPending
-      case 'APPROVAL':
-        return t.statusApproval || 'Ожидает выплаты'
+      case 'COMPLETED':
+        return t.statusCompleted || 'Completed'
       case 'APPROVED':
         return t.statusApproved
       case 'REJECTED':
         return t.statusRejected
       default:
-        return t.statusPending
+        return t.statusCompleted || 'Completed'
     }
   }
 
   const getStatusColor = () => {
     switch (withdrawalStatus) {
-      case 'APPROVAL':
-        return '#fbbf24' // Жёлтый - ожидает выплаты
+      case 'COMPLETED':
+        return '#10b981' // Зелёный - завершено
       case 'APPROVED':
         return '#10b981'
       case 'REJECTED':
         return '#ef4444'
       default:
-        return '#fbbf24'
+        return '#10b981'
     }
   }
 

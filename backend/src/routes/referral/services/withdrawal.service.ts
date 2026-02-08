@@ -96,7 +96,7 @@ export class WithdrawalService {
         referralEarningId,
         amount: finalAmount, // ✅ Берём из обновлённого earning
         trc20Address,
-        status: 'APPROVAL'  // ✅ Ждёт выплаты от админа
+        status: 'COMPLETED'  // ✅ Вывод завершён, админ получил уведомление
       }
     })
 

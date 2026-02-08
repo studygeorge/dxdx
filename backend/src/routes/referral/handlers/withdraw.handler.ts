@@ -108,28 +108,27 @@ export async function withdrawBonusHandler(
 
     console.log(`💾 ReferralEarning in DB: id=${referralEarning.id}, amount=$${Number(referralEarning.amount).toFixed(2)}`)
 
+    // ✅ Если бонус уже выведен - возвращаем success с информацией о выводе
     if (referralEarning.withdrawn) {
-      return reply.code(400).send({
-        success: false,
-        error: 'Bonus already withdrawn',
-        withdrawnAt: referralEarning.withdrawnAt
+      const existingRequest = await prisma.referralWithdrawalRequest.findFirst({
+        where: {
+          userId,
+          referralUserId,
+          investmentId,
+          status: { in: ['COMPLETED'] }
+        }
       })
-    }
 
-    const existingRequest = await prisma.referralWithdrawalRequest.findFirst({
-      where: {
-        userId,
-        referralUserId,
-        investmentId,
-        status: { in: ['COMPLETED'] }  // ✅ Проверяем только COMPLETED (вывод уже завершён)
-      }
-    })
-
-    if (existingRequest) {
-      return reply.code(400).send({
-        success: false,
-        error: 'Withdrawal request already completed',
-        data: { withdrawalId: existingRequest.id }
+      return reply.send({
+        success: true,
+        message: 'Bonus already withdrawn',
+        data: {
+          withdrawalId: existingRequest?.id || null,
+          amount: parseFloat(Number(referralEarning.amount).toFixed(2)),
+          status: 'COMPLETED',
+          withdrawnAt: referralEarning.withdrawnAt,
+          alreadyWithdrawn: true  // ✅ Флаг для фронтенда
+        }
       })
     }
 

@@ -10,7 +10,9 @@ export default function OverviewTab({
   user, 
   kycStatus, 
   onOpenKYCModal,
-  onNavigateToInvestments  // ✅ НОВЫЙ ПРОП для навигации
+  onNavigateToInvestments,
+  investments: externalInvestments, // ✅ From parent (cached)
+  investmentsLoading // ✅ Loading state from parent
 }) {
   const [portfolioData, setPortfolioData] = useState({
     totalCapital: 0,
@@ -115,9 +117,59 @@ export default function OverviewTab({
     { name: 'Elite', apy: 22, minAmount: 6000, maxAmount: 100000, duration: 180 }
   ]
 
+  // ✅ Calculate portfolio data from external investments (no fetch needed)
+  useEffect(() => {
+    if (!externalInvestments || investmentsLoading) {
+      setPortfolioData(prev => ({ ...prev, loading: true }))
+      return
+    }
+
+    const investmentsList = externalInvestments || []
+    const activeInvs = investmentsList.filter(inv => inv.status === 'ACTIVE')
+    setActiveInvestments(activeInvs)
+    setInvestments(activeInvs)
+
+    let capitalInWork = 0
+    let availableBalance = 0
+    let totalWithdrawnProfit = 0
+    let activePlans = 0
+
+    investmentsList.forEach(investment => {
+      const amount = parseFloat(investment.amount || 0)
+      const status = investment.status
+      const availableProfit = parseFloat(investment.availableProfit || 0)
+      const withdrawnProfits = parseFloat(investment.withdrawnProfits || 0)
+
+      if (status === 'ACTIVE' || status === 'COMPLETED') {
+        capitalInWork += amount
+        activePlans++
+      }
+
+      availableBalance += availableProfit
+      totalWithdrawnProfit += withdrawnProfits
+    })
+
+    const totalCapital = capitalInWork + availableBalance
+    const totalAccumulatedProfit = availableBalance + totalWithdrawnProfit
+    const accumulatedReturnPercent = capitalInWork > 0 
+      ? (totalAccumulatedProfit / capitalInWork) * 100 
+      : 0
+
+    setPortfolioData({
+      totalCapital,
+      capitalInWork,
+      availableBalance,
+      totalWithdrawnProfit,
+      totalAccumulatedProfit,
+      accumulatedReturnPercent: `${accumulatedReturnPercent.toFixed(2)}%`,
+      activePlans,
+      loading: false
+    })
+  }, [externalInvestments, investmentsLoading])
+
+  // Fetch transaction history separately (not cached)
   useEffect(() => {
     if (user) {
-      fetchPortfolioData()
       fetchTransactionHistory()
     }
   }, [user])
@@ -148,103 +200,7 @@ export default function OverviewTab({
     }
   }
 
-  const fetchPortfolioData = async () => {
-    const token = localStorage.getItem('access_token')
-    if (!token) {
-      setPortfolioData({
-        totalCapital: 0,
-        capitalInWork: 0,
-        availableBalance: 0,
-        accumulatedReturnPercent: 0,
-        activePlans: 0,
-        loading: false
-      })
-      return
-    }
-
-    try {
-      
-      const response = await fetch(`${API_BASE_URL}/api/v1/investments/my`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        const investmentsList = data.data || []
-        
-
-        const activeInvs = investmentsList.filter(inv => inv.status === 'ACTIVE')
-        setActiveInvestments(activeInvs)
-        setInvestments(activeInvs)
-
-        let capitalInWork = 0
-        let availableBalance = 0
-        let totalWithdrawnProfit = 0
-        let activePlans = 0
-
-        investmentsList.forEach(investment => {
-          const amount = parseFloat(investment.amount || 0)
-          const status = investment.status
-          const availableProfit = parseFloat(investment.availableProfit || 0)
-          const withdrawnProfits = parseFloat(investment.withdrawnProfits || 0)
-
-          if (status === 'ACTIVE' || status === 'COMPLETED') {
-            capitalInWork += amount
-          }
-
-          if (status === 'ACTIVE') {
-            availableBalance += availableProfit
-            totalWithdrawnProfit += withdrawnProfits
-          }
-
-          if (status === 'ACTIVE') {
-            activePlans++
-          }
-        })
-
-        const totalCapital = capitalInWork + availableBalance
-        
-        const totalAccumulatedProfit = availableBalance + totalWithdrawnProfit
-        const accumulatedReturnPercent = capitalInWork > 0 
-          ? (totalAccumulatedProfit / capitalInWork) * 100 
-          : 0
-
-        setPortfolioData({
-          totalCapital,
-          capitalInWork,
-          availableBalance,
-          accumulatedReturnPercent,
-          activePlans,
-          loading: false
-        })
-      } else {
-        console.error('Failed to fetch investments')
-        setPortfolioData({
-          totalCapital: 0,
-          capitalInWork: 0,
-          availableBalance: 0,
-          accumulatedReturnPercent: 0,
-          activePlans: 0,
-          loading: false
-        })
-      }
-    } catch (error) {
-      console.error('Error fetching portfolio data:', error)
-      setPortfolioData({
-        totalCapital: 0,
-        capitalInWork: 0,
-        availableBalance: 0,
-        accumulatedReturnPercent: 0,
-        activePlans: 0,
-        loading: false
-      })
-    }
-  }
-
+  // ✅ Optimized: use external investments data instead of fetching again
   const fetchTransactionHistory = async () => {
     const token = localStorage.getItem('access_token')
     if (!token) {
@@ -256,50 +212,36 @@ export default function OverviewTab({
       
       let allTransactions = []
 
-      try {
-        const investmentsRes = await fetch(`${API_BASE_URL}/api/v1/investments/my`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include'
+      // ✅ Use external investments data (already fetched)
+      const investments = externalInvestments || []
+      
+      investments.forEach(investment => {
+        allTransactions.push({
+          id: `deposit-${investment.id}`,
+          type: 'deposit',
+          amount: parseFloat(investment.amount),
+          status: investment.status === 'ACTIVE' || investment.status === 'COMPLETED' ? 'active' : 'pending',
+          date: investment.startDate || investment.createdAt,
+          planName: investment.planName,
+          investmentId: investment.id
         })
 
-        if (investmentsRes.ok) {
-          const investmentsData = await investmentsRes.json()
-          const investments = investmentsData.data || []
+        if (investment.pendingUpgrade && canUpgradeFromPlan(investment.planName)) {
+          const additionalAmount = parseFloat(investment.pendingUpgrade.additionalAmount || investment.pendingUpgrade.newAmount || 0)
           
-          investments.forEach(investment => {
+          if (additionalAmount > 0) {
             allTransactions.push({
-              id: `deposit-${investment.id}`,
-              type: 'deposit',
-              amount: parseFloat(investment.amount),
-              status: investment.status === 'ACTIVE' || investment.status === 'COMPLETED' ? 'active' : 'pending',
-              date: investment.startDate || investment.createdAt,
-              planName: investment.planName,
+              id: `upgrade-pending-${investment.id}`,
+              type: 'upgrade',
+              amount: additionalAmount,
+              status: 'pending',
+              date: investment.pendingUpgrade.createdAt || new Date().toISOString(),
+              planName: `${investment.planName} → ${investment.pendingUpgrade.targetPackage}`,
               investmentId: investment.id
             })
-
-            if (investment.pendingUpgrade && canUpgradeFromPlan(investment.planName)) {
-              const additionalAmount = parseFloat(investment.pendingUpgrade.additionalAmount || investment.pendingUpgrade.newAmount || 0)
-              
-              if (additionalAmount > 0) {
-                allTransactions.push({
-                  id: `upgrade-pending-${investment.id}`,
-                  type: 'upgrade',
-                  amount: additionalAmount,
-                  status: 'pending',
-                  date: investment.pendingUpgrade.createdAt || new Date().toISOString(),
-                  planName: `${investment.planName} → ${investment.pendingUpgrade.targetPackage}`,
-                  investmentId: investment.id
-                })
-              }
-            }
-          })
+          }
         }
-      } catch (err) {
-        console.error('Error fetching investments:', err)
-      }
+      })
 
       try {
         const withdrawalsRes = await fetch(`${API_BASE_URL}/api/v1/investments/withdrawals`, {

@@ -78,7 +78,9 @@ const ReinvestModal = ({
   }, [reinvestAmount, currentAmount, currentPackage, investment.duration])
 
   const handleMaxClick = () => {
-    setReinvestAmount(availableProfit.toFixed(2))
+    // ✅ Subtract $0.01 to avoid float precision issues
+    const safeMax = Math.max(0, availableProfit - 0.01);
+    setReinvestAmount(safeMax.toFixed(2))
   }
 
   const handleSubmit = async (e) => {
@@ -92,8 +94,9 @@ const ReinvestModal = ({
       return
     }
 
-    // ✅ Allow reinvestment if amount is equal or less (with 0.01 tolerance for float precision)
-    const tolerance = 0.01
+    // ✅ Allow reinvestment if amount is equal or less (with 0.02 tolerance for float precision)
+    // Increased from 0.01 to 0.02 to handle edge cases
+    const tolerance = 0.02
     if (amount > availableProfit + tolerance) {
       setError(`${t.insufficientProfit || 'Insufficient available profit'}. Available: $${availableProfit.toFixed(2)}, Requested: $${amount.toFixed(2)}`)
       return
@@ -487,8 +490,8 @@ const ReinvestModal = ({
                   MAX
                 </button>
               </div>
-              {/* ✅ Float precision tolerance for error display */}
-              {parseFloat(reinvestAmount) > availableProfit + 0.01 && (
+              {/* ✅ Float precision tolerance 0.02 for error display */}
+              {parseFloat(reinvestAmount) > availableProfit + 0.02 && (
                 <div style={{
                   fontSize: '11px',
                   color: '#ef4444',
@@ -570,8 +573,8 @@ const ReinvestModal = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {(() => {
-                // ✅ Float precision tolerance for validation
-                const tolerance = 0.01
+                // ✅ Float precision tolerance 0.02 for validation
+                const tolerance = 0.02
                 const amount = parseFloat(reinvestAmount)
                 const isInvalidAmount = loading || !reinvestAmount || amount <= 0 || amount > availableProfit + tolerance
                 

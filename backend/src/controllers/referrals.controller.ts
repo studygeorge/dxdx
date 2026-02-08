@@ -335,6 +335,8 @@ export class ReferralsController {
       const now = new Date()
       const availableEarnings = earnings.filter(earning => {
         if (!earning.investment?.createdAt) return false
+        // ✅ Проверяем что инвестиция активна (не выведена)
+        if (earning.investment.status !== 'ACTIVE') return false
         const investmentDate = new Date(earning.investment.createdAt)
         const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
         return daysPassed >= 31
@@ -343,7 +345,7 @@ export class ReferralsController {
       if (availableEarnings.length === 0) {
         return reply.code(400).send({
           success: false,
-          error: 'No bonuses available yet (31 days required)'
+          error: 'No bonuses available yet (31 days required or investment withdrawn)'
         })
       }
 
@@ -374,7 +376,7 @@ export class ReferralsController {
                 referralEarningId: earning.id,
                 amount: Number(earning.amount),
                 trc20Address: trc20Address.trim(),
-                status: 'APPROVAL'  // ✅ Ждёт выплаты от админа
+                status: 'COMPLETED'  // ✅ Вывод завершён, админ получил уведомление
               }
             })
           )
@@ -476,6 +478,8 @@ export class ReferralsController {
       const now = new Date()
       const availableEarnings = earnings.filter(earning => {
         if (!earning.investment?.createdAt) return false
+        // ✅ Проверяем что инвестиция активна (не выведена)
+        if (earning.investment.status !== 'ACTIVE') return false
         const investmentDate = new Date(earning.investment.createdAt)
         const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
         return daysPassed >= 31
@@ -484,7 +488,7 @@ export class ReferralsController {
       if (availableEarnings.length === 0) {
         return reply.code(400).send({
           success: false,
-          error: 'No bonuses available yet (31 days required)'
+          error: 'No bonuses available yet (31 days required or investment withdrawn)'
         })
       }
 

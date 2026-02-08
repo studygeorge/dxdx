@@ -1,5 +1,5 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { VideoBackground, FallingStars, TiffanyNebula, FlyingWhiteStars } from './components/BackgroundEffects'
 import NavigationDesktop from './components/NavigationDesktop'
@@ -58,6 +58,9 @@ export default function ProfileLayout({ isMobile }) {
     disconnectWallet
   } = useWallet(translations[language], user, refreshUserData)
 
+  // Referral modals state
+  const [hasReferralModalOpen, setHasReferralModalOpen] = useState(false)
+
   // Инициализация
   useEffect(() => {
     console.log('🚀 ProfileLayout mounted - Starting initialization')
@@ -75,7 +78,7 @@ export default function ProfileLayout({ isMobile }) {
   const t = translations[language]
   const tabs = getTabs(t)
   const isKYCApproved = kycStatus === 'APPROVED'
-  const isAnyModalOpen = showKYCModal || showWeb3Modal || hasOpenModal || showLogoutModal
+  const isAnyModalOpen = showKYCModal || showWeb3Modal || hasOpenModal || showLogoutModal || hasReferralModalOpen
 
   // Обработчики
   const handleNavigateToInvestments = (investmentId) => {
@@ -179,7 +182,7 @@ export default function ProfileLayout({ isMobile }) {
         return <HistoryTab isMobile={isMobile} language={language} user={user} />
       
       case 'referral':
-        return <ReferralTab isMobile={isMobile} language={language} user={user} />
+        return <ReferralTab isMobile={isMobile} language={language} user={user} onModalStateChange={setHasReferralModalOpen} />
       
       case 'upgrade':
         return <WalletTab isMobile={isMobile} language={language} user={user} walletAddress={walletAddress} onModalStateChange={setHasOpenModal} />

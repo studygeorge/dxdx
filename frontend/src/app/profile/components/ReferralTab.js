@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import ReferralBonusWithdrawModal from './wallet/ReferralBonusWithdrawModal'
 import ReferralBonusReinvestModal from './wallet/ReferralBonusReinvestModal'
 
-export default function ReferralTab({ isMobile, language, user }) {
+export default function ReferralTab({ isMobile, language, user, onModalStateChange }) {
   const [referralData, setReferralData] = useState({
     referralCode: '',
     referralLink: '',
@@ -494,6 +494,7 @@ export default function ReferralTab({ isMobile, language, user }) {
       return
     }
     setShowBulkWithdrawModal(true)
+    if (onModalStateChange) onModalStateChange(true)
   }
 
   const handleBulkWithdrawSubmit = async (e) => {
@@ -562,6 +563,7 @@ export default function ReferralTab({ isMobile, language, user }) {
       fetchInvestments()
     }
     setShowReinvestModal(true)
+    if (onModalStateChange) onModalStateChange(true)
   }
 
   const handleReinvestSubmit = async (investmentId) => {
@@ -1446,6 +1448,7 @@ export default function ReferralTab({ isMobile, language, user }) {
             setTrc20Address('')
             setWithdrawError('')
             setWithdrawSuccess('')
+            if (onModalStateChange) onModalStateChange(false)
           }}
           onSubmit={handleBulkWithdrawSubmit}
           trc20Address={trc20Address}
@@ -1486,6 +1489,7 @@ export default function ReferralTab({ isMobile, language, user }) {
             setShowReinvestModal(false)
             setWithdrawError('')
             setWithdrawSuccess('')
+            if (onModalStateChange) onModalStateChange(false)
           }}
           onSubmit={handleReinvestSubmit}
           error={withdrawError}

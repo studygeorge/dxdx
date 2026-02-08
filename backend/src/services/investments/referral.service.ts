@@ -26,7 +26,7 @@ export class ReferralService {
             level: 1,
             percentage: 7.00,
             amount: level1Commission,
-            status: 'PENDING'
+            status: 'COMPLETED'  // ✅ Earning готов к выводу
           }
         })
         
@@ -48,7 +48,7 @@ export class ReferralService {
                 level: 2,
                 percentage: 3.00,
                 amount: level2Commission,
-                status: 'PENDING'
+                status: 'COMPLETED'  // ✅ Earning готов к выводу
               }
             })
             

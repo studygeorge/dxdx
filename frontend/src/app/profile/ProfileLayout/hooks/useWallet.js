@@ -9,10 +9,8 @@ export const useWallet = (t, user, refreshUserData) => {
 
   const checkWalletConnection = async () => {
     const savedWalletAddress = localStorage.getItem('wallet_address')
-    console.log('💼 Checking wallet connection...')
     
     if (savedWalletAddress) {
-      console.log('✅ Wallet address found in localStorage')
       setWalletAddress(savedWalletAddress)
       return
     }
@@ -24,9 +22,7 @@ export const useWallet = (t, user, refreshUserData) => {
           const address = accounts[0]
           setWalletAddress(address)
           localStorage.setItem('wallet_address', address)
-          console.log('✅ Wallet connected from MetaMask')
         } else {
-          console.log('ℹ️ No wallet connected')
         }
       } catch (error) {
         console.error('❌ Failed to check wallet:', error)
@@ -35,7 +31,6 @@ export const useWallet = (t, user, refreshUserData) => {
   }
 
   const connectWallet = async () => {
-    console.log('🦊 Starting wallet connection...')
     
     if (typeof window === 'undefined' || !window.ethereum) {
       setWalletError(t.installMetaMask)
@@ -56,7 +51,6 @@ export const useWallet = (t, user, refreshUserData) => {
       }
   
       const address = accounts[0]
-      console.log('✅ Account received')
   
       const nonceResponse = await web3AuthAPI.requestNonce(address)
       
@@ -100,7 +94,6 @@ export const useWallet = (t, user, refreshUserData) => {
         
         await refreshUserData()
         
-        console.log('✅ Wallet connection successful!')
       } else {
         throw new Error(verifyResponse.data?.error || 'Signature verification failed')
       }
@@ -124,7 +117,6 @@ export const useWallet = (t, user, refreshUserData) => {
   }
 
   const disconnectWallet = async () => {
-    console.log('🔌 Disconnecting wallet...')
     
     try {
       setWalletAddress('')
@@ -138,13 +130,10 @@ export const useWallet = (t, user, refreshUserData) => {
             method: 'wallet_revokePermissions',
             params: [{ eth_accounts: {} }]
           })
-          console.log('✅ MetaMask permissions revoked')
         } catch (err) {
-          console.log('ℹ️ Could not revoke MetaMask permissions (not supported)')
         }
       }
       
-      console.log('✅ Wallet disconnected')
       alert(t.walletDisconnected)
       
     } catch (error) {
@@ -161,7 +150,6 @@ export const useWallet = (t, user, refreshUserData) => {
   useEffect(() => {
     if (user?.walletAddress && !walletAddress) {
       setWalletAddress(user.walletAddress)
-      console.log('✅ Wallet address synced from user:', user.walletAddress)
     }
   }, [user])
 

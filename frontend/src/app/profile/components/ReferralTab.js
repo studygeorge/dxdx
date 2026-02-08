@@ -208,7 +208,6 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
     const token = localStorage.getItem('access_token')
     
     if (!token) {
-      console.warn('⚠️ No access token found')
       setLoading(false)
       return
     }
@@ -1370,7 +1369,6 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
                 title: 'DXCAPITAL',
                 text: shareText
               }).catch(err => {
-                console.log('Share cancelled or failed:', err)
                 copyToClipboard(referralData.referralLink)
               })
             } else {

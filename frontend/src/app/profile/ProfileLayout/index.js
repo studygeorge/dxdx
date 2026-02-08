@@ -63,7 +63,6 @@ export default function ProfileLayout({ isMobile }) {
 
   // Инициализация
   useEffect(() => {
-    console.log('🚀 ProfileLayout mounted - Starting initialization')
     
     const cleanupViewport = setupViewport()
     const cleanupStyles = injectGlobalStyles()
@@ -82,7 +81,6 @@ export default function ProfileLayout({ isMobile }) {
 
   // Обработчики
   const handleNavigateToInvestments = (investmentId) => {
-    console.log('🚀 Navigating to InvestingTab, investment ID:', investmentId)
     setActiveTab('investing')
     
     setTimeout(() => {
@@ -94,19 +92,16 @@ export default function ProfileLayout({ isMobile }) {
   }
 
   const handleLogout = async () => {
-    console.log('🚪 Starting instant logout...')
     
     // Step 1: INSTANT redirect (не ждём ничего!)
     window.location.href = '/'
     
     // Step 2: Clear localStorage immediately (выполнится перед редиректом)
     localStorage.clear()
-    console.log('✅ LocalStorage cleared + instant redirect initiated')
     
     // Step 3: Background cleanup (выполнится после редиректа, но не блокирует UI)
     try {
       await authAPI.logout()
-      console.log('✅ API logout successful')
     } catch (error) {
       console.error('❌ API logout error (non-critical):', error)
     }
@@ -118,9 +113,7 @@ export default function ProfileLayout({ isMobile }) {
           method: 'wallet_revokePermissions',
           params: [{ eth_accounts: {} }]
         })
-        console.log('✅ MetaMask permissions revoked')
       } catch (err) {
-        console.log('ℹ️ Could not revoke MetaMask permissions')
       }
     }
   }

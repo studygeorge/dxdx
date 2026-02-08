@@ -69,12 +69,10 @@ export default function CameraCapture({
 
     for (const type of types) {
       if (MediaRecorder.isTypeSupported(type)) {
-        console.log('✅ Supported MIME type found:', type)
         return type
       }
     }
 
-    console.warn('⚠️ No supported MIME type found, using default')
     return 'video/webm' // Fallback
   }
 
@@ -85,7 +83,6 @@ export default function CameraCapture({
     if (mode === 'video') {
       const mimeType = getSupportedMimeType()
       setSupportedMimeType(mimeType)
-      console.log('📹 Will use MIME type:', mimeType)
     }
 
     return () => {
@@ -190,7 +187,6 @@ export default function CameraCapture({
         videoBitsPerSecond: 2500000
       }
 
-      console.log('📹 Starting recording with:', options)
 
       const mediaRecorder = new MediaRecorder(stream, options)
       mediaRecorderRef.current = mediaRecorder
@@ -200,13 +196,10 @@ export default function CameraCapture({
       mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data)
-          console.log('📦 Data chunk received:', e.data.size, 'bytes')
         }
       }
 
       mediaRecorder.onstop = () => {
-        console.log('⏹️ Recording stopped')
-        console.log('📦 Total chunks:', chunksRef.current.length)
         
         if (chunksRef.current.length === 0) {
           console.error('❌ No video data recorded')
@@ -216,10 +209,8 @@ export default function CameraCapture({
         }
 
         const actualDuration = (Date.now() - recordingStartTimeRef.current) / 1000
-        console.log('⏱️ Actual recording duration:', actualDuration, 'seconds')
 
         const blob = new Blob(chunksRef.current, { type: mimeType })
-        console.log('✅ Video blob created:', blob.size, 'bytes, type:', blob.type)
         
         if (blob.size === 0) {
           console.error('❌ Video blob is empty')
@@ -239,7 +230,6 @@ export default function CameraCapture({
           mimeType: mimeType
         }
 
-        console.log('📊 Video metadata:', metadata)
 
         stopCamera()
         onVideoCapture(blob, metadata)
@@ -254,7 +244,6 @@ export default function CameraCapture({
       mediaRecorder.start(100)
       setIsRecording(true)
       setError('')
-      console.log('✅ Recording started')
     } catch (err) {
       console.error('❌ Recording error:', err)
       setError('Failed to start recording: ' + err.message)
@@ -262,16 +251,13 @@ export default function CameraCapture({
   }
 
   const handleStopRecording = () => {
-    console.log('🛑 Stop recording requested')
     
     if (mediaRecorderRef.current && isRecording) {
       try {
         if (mediaRecorderRef.current.state === 'recording') {
-          console.log('⏹️ Stopping MediaRecorder...')
           mediaRecorderRef.current.stop()
           setIsRecording(false)
         } else {
-          console.log('⚠️ MediaRecorder not in recording state:', mediaRecorderRef.current.state)
         }
       } catch (err) {
         console.error('❌ Error stopping recording:', err)
@@ -279,7 +265,6 @@ export default function CameraCapture({
         setIsRecording(false)
       }
     } else {
-      console.log('⚠️ Cannot stop: mediaRecorder or isRecording is false')
     }
   }
 

@@ -163,7 +163,6 @@ export default function OverviewTab({
     }
 
     try {
-      console.log('Fetching portfolio data...')
       
       const response = await fetch(`${API_BASE_URL}/api/v1/investments/my`, {
         headers: {
@@ -177,7 +176,6 @@ export default function OverviewTab({
         const data = await response.json()
         const investmentsList = data.data || []
         
-        console.log('Investments loaded:', investmentsList)
 
         const activeInvs = investmentsList.filter(inv => inv.status === 'ACTIVE')
         setActiveInvestments(activeInvs)
@@ -207,7 +205,6 @@ export default function OverviewTab({
             activePlans++
           }
 
-          console.log(`Investment ${investment.id} calculation:`, {
             amount,
             availableProfit,
             withdrawnProfits,
@@ -222,7 +219,6 @@ export default function OverviewTab({
           ? (totalAccumulatedProfit / capitalInWork) * 100 
           : 0
 
-        console.log('Portfolio stats:', {
           totalCapital,
           capitalInWork,
           availableBalance,
@@ -272,7 +268,6 @@ export default function OverviewTab({
     }
 
     try {
-      console.log('Fetching transaction history...')
       
       let allTransactions = []
 
@@ -400,7 +395,6 @@ export default function OverviewTab({
 
       allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date))
 
-      console.log('Total transactions loaded:', allTransactions.length)
 
       setTransactions(allTransactions)
       setLoadingTransactions(false)

@@ -11,29 +11,23 @@ export const useProfile = (router) => {
 
   const fetchUserData = async () => {
     const token = localStorage.getItem('access_token')
-    console.log('🔑 Token check:', token ? 'Found' : 'Not found')
     
     if (!token) {
-      console.log('❌ No token, redirecting to home')
       router.push('/')
       return
     }
 
     try {
-      console.log('📥 Fetching user data AND KYC status...')
       
       const [userResponse, kycResponse] = await Promise.allSettled([
         authAPI.getProfile(),
         api.get('/kyc/status')
       ])
 
-      console.log('📊 User response status:', userResponse.status)
-      console.log('📊 KYC response status:', kycResponse.status)
 
       if (userResponse.status === 'fulfilled' && userResponse.value.data) {
         const userData = userResponse.value.data.data || userResponse.value.data.user
         setUser(userData)
-        console.log('✅ User data loaded:', userData?.email)
       } else {
         console.error('❌ User response failed:', userResponse)
       }
@@ -42,9 +36,7 @@ export const useProfile = (router) => {
         const result = kycResponse.value.data
         const status = result.data?.kycStatus || result.kycStatus || 'NOT_SUBMITTED'
         setKycStatus(status)
-        console.log('✅ KYC status loaded:', status)
       } else {
-        console.log('⚠️ KYC status check failed, setting default')
         setKycStatus('NOT_SUBMITTED')
       }
       
@@ -52,22 +44,18 @@ export const useProfile = (router) => {
       console.error('❌ Failed to fetch user data:', error)
       
       if (error.response?.status === 401) {
-        console.log('🔄 401 error, redirecting to home')
         router.push('/')
       }
     } finally {
-      console.log('✅ Setting loading to false')
       setLoading(false)
     }
   }
 
   const fetchInvestmentPlans = async () => {
     setPlansLoading(true)
-    console.log('📊 Fetching investment plans...')
     
     try {
       const response = await api.get('/admin/settings/staking-plans/public')
-      console.log('✅ Plans response received')
   
       if (response.data) {
         const data = response.data
@@ -83,10 +71,8 @@ export const useProfile = (router) => {
           description: plan.description
         }))
         setInvestmentPlans(formattedPlans)
-        console.log('✅ Plans loaded:', formattedPlans.length)
       } else {
         setInvestmentPlans([])
-        console.log('⚠️ No plans data')
       }
     } catch (error) {
       console.error('❌ Failed to fetch plans:', error)
@@ -97,7 +83,6 @@ export const useProfile = (router) => {
   }
 
   const handleKYCSubmitted = (newStatus) => {
-    console.log('✅ KYC submitted, new status:', newStatus)
     setKycStatus(newStatus)
   }
 

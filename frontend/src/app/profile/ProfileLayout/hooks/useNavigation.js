@@ -13,18 +13,15 @@ export const useNavigation = () => {
   useEffect(() => {
     const tab = searchParams.get('tab')
     if (tab) {
-      console.log('📌 Tab from URL:', tab)
       setActiveTab(tab)
     }
     
     const savedLang = localStorage.getItem('language') || 'en'
-    console.log('🌐 Language:', savedLang)
     setLanguage(savedLang)
   }, [searchParams])
 
   const toggleLanguage = () => {
     const newLang = language === 'en' ? 'ru' : 'en'
-    console.log('🌐 Switching language to:', newLang)
     setLanguage(newLang)
     localStorage.setItem('language', newLang)
   }

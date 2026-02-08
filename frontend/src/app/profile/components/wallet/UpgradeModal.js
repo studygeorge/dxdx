@@ -280,8 +280,6 @@ const UpgradeModal = ({
         senderWalletAddress: senderWalletAddress.trim()
       });
 
-      console.log('🔍 Full backend response:', result);
-      console.log('🔍 Result structure:', JSON.stringify(result, null, 2));
 
       if (result && result.success) {
         setSubmittedAmount(additionalAmount);
@@ -295,7 +293,6 @@ const UpgradeModal = ({
         setUpgradeId(upgradeIdValue);
         setAdminWalletAddress(adminWalletValue);
         
-        console.log('✅ Extracted values:', {
           upgradeId: upgradeIdValue,
           adminWallet: adminWalletValue,
           senderWallet: senderWalletValue
@@ -307,10 +304,8 @@ const UpgradeModal = ({
           console.error('   Checking alternative paths...');
           
           if (result.adminWalletAddress) {
-            console.log('   Found in result.adminWalletAddress');
             setAdminWalletAddress(result.adminWalletAddress);
           } else if (result.data?.adminWalletAddress) {
-            console.log('   Found in result.data.adminWalletAddress');
             setAdminWalletAddress(result.data.adminWalletAddress);
           } else {
             alert('Error: Admin wallet address not received from server. Please contact support.');
@@ -350,11 +345,6 @@ const UpgradeModal = ({
       return;
     }
 
-    console.log('📤 Sending payment confirmation...');
-    console.log('   Upgrade ID:', upgradeId);
-    console.log('   Admin Wallet:', adminWalletAddress);
-    console.log('   Sender Wallet:', senderWalletAddressStored);
-    console.log('   Amount:', submittedAmount);
 
     const token = localStorage.getItem('access_token');
     
@@ -364,11 +354,9 @@ const UpgradeModal = ({
       return;
     }
 
-    console.log('🔑 Token found, length:', token.length);
 
     try {
       const url = `/api/v1/investments/upgrade/${upgradeId}/confirm-payment`;
-      console.log('🌐 Request URL:', url);
 
       const response = await fetch(url, {
         method: 'POST',
@@ -377,12 +365,9 @@ const UpgradeModal = ({
         }
       });
 
-      console.log('📥 Response status:', response.status);
-      console.log('📥 Response headers:', [...response.headers.entries()]);
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Success response:', data);
         
         setCurrentStep(3);
       } else {

@@ -14,7 +14,6 @@ export default function InvestmentCard({
   t, 
   isMobile 
 }) {
-  console.log('InvestmentCard Debug:', {
     id: investment.id,
     planName: investment.planName,
     status: investment.status,

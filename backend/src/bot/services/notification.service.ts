@@ -258,32 +258,15 @@ Withdrawal ID: <code>${withdrawalId}</code>
 
 <b>Дата заявки:</b> ${currentTime}
 
-Переведите средства на указанный адрес и подтвердите операцию:
+Переведите средства на указанный адрес.
     `.trim()
-
-    const keyboard = {
-      inline_keyboard: [
-        [
-          {
-            text: '✅ Отправил средства',
-            callback_data: `rba_${shortId}`
-          },
-          {
-            text: '❌ Отклонить',
-            callback_data: `rbr_${shortId}`
-          }
-        ]
-      ]
-    }
 
     console.log('📤 Sending referral bonus withdrawal notification to Telegram...')
     console.log('   Full withdrawal ID:', withdrawalId)
-    console.log('   Short ID for buttons:', shortId)
     console.log('   Admin Chat ID:', supportChatId)
 
     await bot.sendMessage(supportChatId, message, {
-      parse_mode: 'HTML',
-      reply_markup: keyboard
+      parse_mode: 'HTML'
     })
 
     console.log('✅ Referral bonus withdrawal notification sent successfully')

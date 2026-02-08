@@ -105,7 +105,7 @@ export async function withdrawBonusHandler(
         userId,
         referralUserId,
         investmentId,
-        status: { in: ['PENDING', 'COMPLETED'] }  // ✅ Проверяем и PENDING и COMPLETED
+        status: { in: ['APPROVAL', 'COMPLETED'] }  // ✅ Проверяем APPROVAL (ждёт выплаты) и COMPLETED (выплачено)
       }
     })
 

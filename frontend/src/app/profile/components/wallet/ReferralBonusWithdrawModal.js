@@ -22,7 +22,7 @@ const ReferralBonusWithdrawModal = ({
   const [currentStep, setCurrentStep] = useState(1)
   const [pendingWithdrawalId, setPendingWithdrawalId] = useState(null)
   const [checkingStatus, setCheckingStatus] = useState(false)
-  const [withdrawalStatus, setWithdrawalStatus] = useState('PENDING')
+  const [withdrawalStatus, setWithdrawalStatus] = useState('APPROVAL')
   const intervalRef = useRef(null)
 
   const translations = {
@@ -140,7 +140,7 @@ const ReferralBonusWithdrawModal = ({
   }
 
   useEffect(() => {
-    if (currentStep === 2 && pendingWithdrawalId && withdrawalStatus === 'PENDING') {
+    if (currentStep === 2 && pendingWithdrawalId && withdrawalStatus === 'APPROVAL') {
       checkWithdrawalStatus(pendingWithdrawalId)
 
       intervalRef.current = setInterval(() => {
@@ -165,8 +165,8 @@ const ReferralBonusWithdrawModal = ({
     const result = await onSubmit(e)
     
     if (result && result.success) {
-      // ✅ Backend теперь возвращает COMPLETED сразу, показываем success screen
-      setWithdrawalStatus('COMPLETED')
+      // ✅ Backend теперь возвращает APPROVAL (ждёт выплаты), показываем success screen
+      setWithdrawalStatus('APPROVAL')
       setCurrentStep(2)
       
       if (result.data && result.data.withdrawalId) {
@@ -184,7 +184,7 @@ const ReferralBonusWithdrawModal = ({
     }
     setCurrentStep(1)
     setPendingWithdrawalId(null)
-    setWithdrawalStatus('PENDING')
+    setWithdrawalStatus('APPROVAL')
     setCheckingStatus(false)
     setTrc20Address('')
     onClose()
@@ -194,6 +194,8 @@ const ReferralBonusWithdrawModal = ({
     switch (withdrawalStatus) {
       case 'PENDING':
         return t.statusPending
+      case 'APPROVAL':
+        return t.statusApproval || 'Ожидает выплаты'
       case 'APPROVED':
         return t.statusApproved
       case 'REJECTED':
@@ -205,6 +207,8 @@ const ReferralBonusWithdrawModal = ({
 
   const getStatusColor = () => {
     switch (withdrawalStatus) {
+      case 'APPROVAL':
+        return '#fbbf24' // Жёлтый - ожидает выплаты
       case 'APPROVED':
         return '#10b981'
       case 'REJECTED':

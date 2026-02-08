@@ -374,7 +374,7 @@ export class ReferralsController {
                 referralEarningId: earning.id,
                 amount: Number(earning.amount),
                 trc20Address: trc20Address.trim(),
-                status: 'COMPLETED'  // ✅ COMPLETED сразу, Telegram уже отправлен
+                status: 'APPROVAL'  // ✅ Ждёт выплаты от админа
               }
             })
           )

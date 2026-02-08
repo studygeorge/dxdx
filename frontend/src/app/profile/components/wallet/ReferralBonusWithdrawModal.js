@@ -223,7 +223,7 @@ const ReferralBonusWithdrawModal = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 10001,
+        zIndex: 9999,
         padding: '20px'
       }}
       onClick={(e) => {
@@ -297,7 +297,7 @@ const ReferralBonusWithdrawModal = ({
                 animation: 'pulse 2s ease-in-out infinite',
                 boxShadow: '0 0 30px rgba(16, 185, 129, 0.3)'
               }}>
-                <div style={{ fontSize: '40px', color: '#10b981' }}>✓</div>
+                <div style={{ fontSize: '32px', fontWeight: '700', color: '#10b981' }}>✓</div>
               </div>
 
               <h2 style={{
@@ -382,7 +382,7 @@ const ReferralBonusWithdrawModal = ({
                     }} />
                   ) : (
                     <span style={{ fontSize: '24px' }}>
-                      {withdrawalStatus === 'APPROVED' ? '✓' : withdrawalStatus === 'REJECTED' ? '✗' : '⏳'}
+                      {withdrawalStatus === 'APPROVED' ? '✓' : withdrawalStatus === 'REJECTED' ? '×' : '⏳'}
                     </span>
                   )}
                 </div>
@@ -430,7 +430,7 @@ const ReferralBonusWithdrawModal = ({
                     justifyContent: 'center',
                     fontSize: '16px'
                   }}>
-                    {withdrawalStatus === 'APPROVED' ? '✓' : withdrawalStatus === 'REJECTED' ? '✗' : '⏳'}
+                    {withdrawalStatus === 'APPROVED' ? '✓' : withdrawalStatus === 'REJECTED' ? '×' : '⏳'}
                   </div>
                   <div>
                     <div style={{
@@ -529,7 +529,7 @@ const ReferralBonusWithdrawModal = ({
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                <span style={{ fontSize: '28px' }}>💰</span>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: '#2dd4bf' }}>$</div>
               </div>
 
               <h2 style={{

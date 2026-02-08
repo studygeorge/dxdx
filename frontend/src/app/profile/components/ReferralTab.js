@@ -308,24 +308,6 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
             tierPercent: apiData.tierPercent || 0.03,
             level1Count: apiData.level1Count || 0
           })
-
-          // ✅ Check for PENDING withdrawals
-          try {
-            const withdrawalResponse = await fetch('https://dxcapital-ai.com/api/v1/referrals/pending-withdrawals', {
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              },
-              credentials: 'include'
-            })
-            
-            if (withdrawalResponse.ok) {
-              const withdrawalResult = await withdrawalResponse.json()
-              setHasPendingWithdrawal(withdrawalResult.hasPending || false)
-            }
-          } catch (err) {
-            console.error('Failed to check pending withdrawals:', err)
-          }
         }
       }
 
@@ -552,6 +534,8 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
       const result = await response.json()
 
       if (response.ok && result.success) {
+        // ✅ Помечаем что withdrawal теперь PENDING
+        setHasPendingWithdrawal(true)
         setWithdrawSuccess(t.bulkWithdrawSuccess)
         setTrc20Address('')
         setTimeout(() => {
@@ -560,6 +544,10 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
         }, 2000)
         return { success: true, data: result.data }
       } else {
+        // Проверяем специфичную ошибку "already pending"
+        if (result.error && result.error.includes('already pending')) {
+          setHasPendingWithdrawal(true)
+        }
         setWithdrawError(result.error || t.withdrawError)
         return { success: false, error: result.error }
       }

@@ -92,8 +92,10 @@ const ReinvestModal = ({
       return
     }
 
-    if (amount > availableProfit) {
-      setError(t.insufficientProfit || 'Insufficient available profit')
+    // ✅ Allow reinvestment if amount is equal or less (with 0.01 tolerance for float precision)
+    const tolerance = 0.01
+    if (amount > availableProfit + tolerance) {
+      setError(`${t.insufficientProfit || 'Insufficient available profit'}. Available: $${availableProfit.toFixed(2)}, Requested: $${amount.toFixed(2)}`)
       return
     }
 
@@ -485,13 +487,14 @@ const ReinvestModal = ({
                   MAX
                 </button>
               </div>
-              {parseFloat(reinvestAmount) > availableProfit && (
+              {/* ✅ Float precision tolerance for error display */}
+              {parseFloat(reinvestAmount) > availableProfit + 0.01 && (
                 <div style={{
                   fontSize: '11px',
                   color: '#ef4444',
                   marginTop: '6px'
                 }}>
-                  {t.insufficientProfit || 'Insufficient available profit'}
+                  {`${t.insufficientProfit || 'Insufficient available profit'}. Available: $${availableProfit.toFixed(2)}`}
                 </div>
               )}
 
@@ -566,33 +569,40 @@ const ReinvestModal = ({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button
-                type="submit"
-                disabled={loading || !reinvestAmount || parseFloat(reinvestAmount) <= 0 || parseFloat(reinvestAmount) > availableProfit}
+              {(() => {
+                // ✅ Float precision tolerance for validation
+                const tolerance = 0.01
+                const amount = parseFloat(reinvestAmount)
+                const isInvalidAmount = loading || !reinvestAmount || amount <= 0 || amount > availableProfit + tolerance
+                
+                return (
+                  <button
+                    type="submit"
+                    disabled={isInvalidAmount}
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: (loading || !reinvestAmount || parseFloat(reinvestAmount) <= 0 || parseFloat(reinvestAmount) > availableProfit)
+                  background: isInvalidAmount
                     ? 'rgba(45, 212, 191, 0.3)' 
                     : 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
                   border: 'none',
                   borderRadius: '16px',
-                  color: (loading || !reinvestAmount || parseFloat(reinvestAmount) <= 0 || parseFloat(reinvestAmount) > availableProfit)
+                  color: isInvalidAmount
                     ? 'rgba(255, 255, 255, 0.4)' 
                     : '#000000',
                   fontSize: '14px',
                   fontWeight: '600',
-                  cursor: (loading || !reinvestAmount || parseFloat(reinvestAmount) <= 0 || parseFloat(reinvestAmount) > availableProfit)
+                  cursor: isInvalidAmount
                     ? 'not-allowed' 
                     : 'pointer',
                   transition: 'all 0.3s',
                   letterSpacing: '-0.3px',
-                  boxShadow: (loading || !reinvestAmount || parseFloat(reinvestAmount) <= 0 || parseFloat(reinvestAmount) > availableProfit)
+                  boxShadow: isInvalidAmount
                     ? 'none'
                     : '0 4px 12px rgba(45, 212, 191, 0.25)'
                 }}
                 onMouseOver={(e) => {
-                  if (!loading && reinvestAmount && parseFloat(reinvestAmount) > 0 && parseFloat(reinvestAmount) <= availableProfit) {
+                  if (!isInvalidAmount) {
                     e.currentTarget.style.transform = 'scale(1.02)'
                     e.currentTarget.style.boxShadow = '0 6px 16px rgba(45, 212, 191, 0.35)'
                   }
@@ -644,6 +654,8 @@ const ReinvestModal = ({
               >
                 {t.cancel || 'Cancel'}
               </button>
+                )
+              })()}
             </div>
           </form>
         )}

@@ -161,7 +161,9 @@ export default function OverviewTab({
       availableBalance,
       totalWithdrawnProfit,
       totalAccumulatedProfit,
-      accumulatedReturnPercent: `${accumulatedReturnPercent.toFixed(2)}%`,
+      accumulatedReturnPercent: typeof accumulatedReturnPercent === 'number' && !isNaN(accumulatedReturnPercent)
+        ? `${accumulatedReturnPercent.toFixed(2)}%`
+        : '0.00%',
       activePlans,
       loading: false
     })
@@ -341,7 +343,9 @@ export default function OverviewTab({
   }
 
   const formatPercent = (value) => {
-    return value.toFixed(2) + '%'
+    const num = parseFloat(value)
+    if (isNaN(num)) return '0.00%'
+    return num.toFixed(2) + '%'
   }
 
   const formatDate = (dateString) => {

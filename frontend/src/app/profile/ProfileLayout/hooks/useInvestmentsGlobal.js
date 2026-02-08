@@ -7,7 +7,7 @@ import { investmentAPI } from '../../components/InvestingTab/utils/api'
  */
 export const useInvestmentsGlobal = (user) => {
   const [investments, setInvestments] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true) // ✅ Start with loading true
   const [lastFetch, setLastFetch] = useState(null)
   
   // Cache duration: 30 seconds
@@ -16,7 +16,8 @@ export const useInvestmentsGlobal = (user) => {
   const fetchInvestments = useCallback(async (force = false) => {
     if (!user) {
       setInvestments([])
-      return
+      setLoading(false)
+      return []
     }
     
     // Check cache
@@ -29,11 +30,12 @@ export const useInvestmentsGlobal = (user) => {
     try {
       setLoading(true)
       const data = await investmentAPI.fetchUserInvestments()
-      setInvestments(data || [])
+      setInvestments(Array.isArray(data) ? data : [])
       setLastFetch(now)
       return data
     } catch (error) {
       console.error('Failed to fetch investments:', error)
+      setInvestments([])
       return []
     } finally {
       setLoading(false)
@@ -42,8 +44,13 @@ export const useInvestmentsGlobal = (user) => {
   
   // Initial fetch
   useEffect(() => {
-    fetchInvestments()
-  }, [user?.id]) // Only refetch when user ID changes
+    if (user?.id) {
+      fetchInvestments()
+    } else {
+      setInvestments([])
+      setLoading(false)
+    }
+  }, [user?.id, fetchInvestments])
   
   const refreshInvestments = useCallback(() => {
     return fetchInvestments(true) // Force refresh

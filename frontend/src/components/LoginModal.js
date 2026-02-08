@@ -49,10 +49,9 @@ export default function LoginModal({ onClose, onSwitchToRegister }) {
     const result = await login(formData.email, formData.password)
     
     if (result.success) {
-      // ✅ Close modal immediately
-      onClose()
-      // ✅ Immediate redirect to profile
-      router.push('/profile')
+      // ✅ INSTANT redirect using window.location - NO DELAY!
+      window.location.href = '/profile'
+      return
     } else {
       // ✅ Фильтруем сообщение "Too many requests"
       const errorMessage = result.error || 'Login failed'

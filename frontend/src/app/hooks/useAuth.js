@@ -53,8 +53,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
+      // ✅ 120 секунд для медленных мобильных соединений
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000)
+      const timeoutId = setTimeout(() => controller.abort(), 120000)
 
       const response = await authAPI.login({ 
         emailOrUsername: email,
@@ -102,16 +103,18 @@ export const AuthProvider = ({ children }) => {
         setUser(userData)
         setIsAuthenticated(true)
       } else {
-        try {
-          const profileResponse = await authAPI.getProfile()
-          const profileData = profileResponse.data.data || profileResponse.data.user
-          if (profileData) {
-            setUser(profileData)
-            setIsAuthenticated(true)
-          }
-        } catch (profileError) {
-          // Silent fail - not critical
-        }
+        // ✅ Fetch profile in background - DON'T block login!
+        setIsAuthenticated(true) // Set immediately so redirect works
+        authAPI.getProfile()
+          .then(profileResponse => {
+            const profileData = profileResponse.data.data || profileResponse.data.user
+            if (profileData) {
+              setUser(profileData)
+            }
+          })
+          .catch(() => {
+            // Silent fail - will be fetched on profile page
+          })
       }
       
       return { success: true, user: userData }

@@ -172,10 +172,9 @@ export default function RegisterModal({ onClose, onSwitchToLogin }) {
         try {
           const loginResult = await login(registrationData.email, registrationData.password)
           if (loginResult.success) {
-            // ✅ Close modal immediately
-            onClose()
-            // ✅ Redirect to profile
-            router.push('/profile')
+            // ✅ INSTANT redirect using window.location - NO DELAY!
+            window.location.href = '/profile'
+            return
           } else {
             // If auto-login fails, show login modal after delay
             setTimeout(() => {

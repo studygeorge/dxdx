@@ -26,6 +26,7 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
   const [withdrawSuccess, setWithdrawSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [hasPendingWithdrawal, setHasPendingWithdrawal] = useState(false)
+  const [pendingWithdrawalReferrals, setPendingWithdrawalReferrals] = useState(new Set())
   const [isTokenReady, setIsTokenReady] = useState(false)
   const [userInvestments, setUserInvestments] = useState([])
   const [loadingInvestments, setLoadingInvestments] = useState(false)
@@ -460,6 +461,8 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
       const result = await response.json()
 
       if (response.ok && result.success) {
+        // ✅ Mark this referral as having pending withdrawal
+        setPendingWithdrawalReferrals(prev => new Set([...prev, selectedReferral.fullUserId]))
         setWithdrawSuccess(t.withdrawSuccess)
         
         setSubmitting(false)
@@ -471,6 +474,11 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
         }
       } else {
         const errorMsg = result.error || result.message || 'Unknown error'
+        
+        // Check if error is "already pending"
+        if (errorMsg && errorMsg.toLowerCase().includes('pending')) {
+          setPendingWithdrawalReferrals(prev => new Set([...prev, selectedReferral.fullUserId]))
+        }
         
         if (result.daysRemaining) {
           setWithdrawError(`${t.availableIn} ${result.daysRemaining} ${t.days}`)
@@ -1418,6 +1426,7 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
           error={withdrawError}
           success={withdrawSuccess}
           submitting={submitting}
+          isPending={pendingWithdrawalReferrals.has(selectedReferral.fullUserId)}
           t={t}
           isMobile={isMobile}
         />

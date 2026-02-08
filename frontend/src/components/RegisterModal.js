@@ -1,10 +1,12 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '../app/hooks/useAuth'
 import OfferModal from './OfferModal'
 
 export default function RegisterModal({ onClose, onSwitchToLogin }) {
-  const { register } = useAuth()
+  const router = useRouter()
+  const { register, login } = useAuth()
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -166,9 +168,26 @@ export default function RegisterModal({ onClose, onSwitchToLogin }) {
         setSuccess(true)
         localStorage.removeItem('referralCode')
         
-        setTimeout(() => {
-          onSwitchToLogin()
-        }, 2000)
+        // ✅ Auto-login after registration
+        try {
+          const loginResult = await login(registrationData.email, registrationData.password)
+          if (loginResult.success) {
+            // ✅ Close modal immediately
+            onClose()
+            // ✅ Redirect to profile
+            router.push('/profile')
+          } else {
+            // If auto-login fails, show login modal after delay
+            setTimeout(() => {
+              onSwitchToLogin()
+            }, 1500)
+          }
+        } catch (err) {
+          // If auto-login fails, show login modal
+          setTimeout(() => {
+            onSwitchToLogin()
+          }, 1500)
+        }
       } else {
         setError(result.error || 'Registration failed')
         generateCaptcha()

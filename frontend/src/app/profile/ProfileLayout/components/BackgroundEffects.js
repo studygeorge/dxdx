@@ -361,52 +361,46 @@ export const TiffanyNebula = ({ isMobile }) => {
 
 export const VideoBackground = ({ isMobile }) => {
   const videoRef = React.useRef(null)
-  const [isLoaded, setIsLoaded] = React.useState(false)
-  const [isPlaying, setIsPlaying] = React.useState(false)
 
   React.useEffect(() => {
     const video = videoRef.current
     if (!video) return
 
-    // Handle video loaded
-    const handleCanPlayThrough = () => {
-      setIsLoaded(true)
-      // Start playing only when fully loaded
-      video.play().then(() => {
-        setIsPlaying(true)
-      }).catch(err => {
-        console.error('Video play failed:', err)
+    // Try to play as soon as possible
+    const tryPlay = () => {
+      video.play().catch(() => {
+        // If autoplay fails, try again after user interaction
+        const playOnInteraction = () => {
+          video.play().catch(() => {})
+          document.removeEventListener('click', playOnInteraction)
+          document.removeEventListener('touchstart', playOnInteraction)
+        }
+        document.addEventListener('click', playOnInteraction)
+        document.addEventListener('touchstart', playOnInteraction)
       })
     }
 
-    // Handle video errors
-    const handleError = (e) => {
-      console.error('Video load error:', e)
-      setIsLoaded(false)
-    }
-
-    // Pause video when tab is hidden (performance optimization)
+    // Pause video when tab is hidden
     const handleVisibilityChange = () => {
       if (document.hidden) {
         video.pause()
-      } else if (isPlaying) {
+      } else {
         video.play().catch(() => {})
       }
     }
 
-    video.addEventListener('canplaythrough', handleCanPlayThrough)
-    video.addEventListener('error', handleError)
+    // Start playing as soon as metadata loaded
+    video.addEventListener('loadedmetadata', tryPlay)
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
     // Force load
     video.load()
 
     return () => {
-      video.removeEventListener('canplaythrough', handleCanPlayThrough)
-      video.removeEventListener('error', handleError)
+      video.removeEventListener('loadedmetadata', tryPlay)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [isMobile, isPlaying])
+  }, [isMobile])
 
   return (
     <div style={{
@@ -416,28 +410,9 @@ export const VideoBackground = ({ isMobile }) => {
       overflow: 'hidden',
       pointerEvents: 'none'
     }}>
-      {/* Show loading placeholder until video loads */}
-      {!isLoaded && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: '#000000',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          <div style={{
-            color: '#2dd4bf',
-            fontSize: '14px',
-            opacity: 0.5
-          }}>
-            Loading...
-          </div>
-        </div>
-      )}
-      
       <video
         ref={videoRef}
+        autoPlay
         loop
         muted
         playsInline
@@ -454,8 +429,6 @@ export const VideoBackground = ({ isMobile }) => {
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          opacity: isPlaying ? 1 : 0,
-          transition: 'opacity 0.5s ease-in',
           transform: 'translate3d(0, 0, 0)',
           backfaceVisibility: 'hidden',
           WebkitTransform: 'translate3d(0, 0, 0)',

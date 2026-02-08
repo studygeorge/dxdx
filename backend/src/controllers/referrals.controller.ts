@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { PrismaClient } from '@prisma/client'
+import { notifyBulkReferralWithdrawal } from '../bot/telegram-bot'
 
 const prisma = new PrismaClient()
 
@@ -348,44 +349,68 @@ export class ReferralsController {
 
       const totalAmount = availableEarnings.reduce((sum, e) => sum + Number(e.amount), 0)
 
-      // Обновить все записи
-      await prisma.referralEarning.updateMany({
-        where: {
-          id: { in: availableEarnings.map(e => e.id) }
-        },
-        data: {
-          withdrawn: true,
-          withdrawnAt: now,
-          status: 'COMPLETED'
-        }
+      // ✅ КРИТИЧНО: Используем транзакцию для атомарности операций
+      const withdrawalRequest = await prisma.$transaction(async (tx) => {
+        // Обновить все записи
+        await tx.referralEarning.updateMany({
+          where: {
+            id: { in: availableEarnings.map(e => e.id) }
+          },
+          data: {
+            withdrawn: true,
+            withdrawnAt: now,
+            status: 'COMPLETED'
+          }
+        })
+
+        // Создать запрос на вывод
+        const withdrawal = await tx.referralWithdrawalRequest.create({
+          data: {
+            userId,
+            amount: totalAmount,
+            trc20Address: trc20Address.trim(),
+            status: 'PENDING'
+          }
+        })
+
+        // Создать запись в истории аудита
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'REFERRAL_BULK_WITHDRAWAL',
+            resource: 'REFERRAL',
+            details: JSON.stringify({
+              withdrawalId: withdrawal.id,
+              totalAmount,
+              count: availableEarnings.length,
+              trc20Address: trc20Address.trim()
+            }),
+            ipAddress: request.ip,
+            success: true
+          }
+        })
+
+        return withdrawal
       })
 
-      // Создать запрос на вывод
-      const withdrawalRequest = await prisma.referralWithdrawalRequest.create({
-        data: {
-          userId,
-          amount: totalAmount,
-          trc20Address: trc20Address.trim(),
-          status: 'PENDING'
-        }
-      })
+      // ✅ КРИТИЧНО: Отправить Telegram уведомление ПОСЛЕ успешной транзакции
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true }
+        })
 
-      // Создать запись в истории аудита
-      await prisma.auditLog.create({
-        data: {
+        await notifyBulkReferralWithdrawal(
           userId,
-          action: 'REFERRAL_BULK_WITHDRAWAL',
-          resource: 'REFERRAL',
-          details: JSON.stringify({
-            withdrawalId: withdrawalRequest.id,
-            totalAmount,
-            count: availableEarnings.length,
-            trc20Address: trc20Address.trim()
-          }),
-          ipAddress: request.ip,
-          success: true
-        }
-      })
+          user?.email || 'unknown',
+          totalAmount,
+          trc20Address.trim(),
+          availableEarnings.length
+        )
+      } catch (notificationError: any) {
+        // Логируем ошибку, но не фейлим запрос - бонусы уже помечены withdrawn
+        console.error('⚠️ Failed to send Telegram notification (withdrawal successful):', notificationError)
+      }
 
       console.log('✅ Bulk withdrawal processed:', {
         userId,

@@ -15,6 +15,7 @@ const ReferralBonusWithdrawModal = ({
   error,
   success,
   submitting,
+  isPending = false,
   language = 'en',
   isMobile
 }) => {
@@ -744,30 +745,30 @@ const ReferralBonusWithdrawModal = ({
 
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !trc20Address.trim()}
+                disabled={submitting || !trc20Address.trim() || isPending}
                 style={{
                   flex: 2,
                   padding: '14px',
-                  background: (submitting || !trc20Address.trim())
+                  background: (submitting || !trc20Address.trim() || isPending)
                     ? 'rgba(45, 212, 191, 0.3)'
                     : 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
                   border: 'none',
                   borderRadius: '24px',
-                  color: (submitting || !trc20Address.trim())
+                  color: (submitting || !trc20Address.trim() || isPending)
                     ? 'rgba(255, 255, 255, 0.5)'
                     : '#000000',
                   fontSize: '15px',
                   fontWeight: '600',
-                  cursor: (submitting || !trc20Address.trim())
+                  cursor: (submitting || !trc20Address.trim() || isPending)
                     ? 'not-allowed'
                     : 'pointer',
                   transition: 'all 0.3s',
-                  boxShadow: (submitting || !trc20Address.trim())
+                  boxShadow: (submitting || !trc20Address.trim() || isPending)
                     ? 'none'
                     : '0 4px 12px rgba(45, 212, 191, 0.3)'
                 }}
                 onMouseOver={(e) => {
-                  if (!submitting && trc20Address.trim()) {
+                  if (!submitting && trc20Address.trim() && !isPending) {
                     e.currentTarget.style.transform = 'scale(1.02)'
                     e.currentTarget.style.boxShadow = '0 6px 20px rgba(45, 212, 191, 0.4)'
                   }
@@ -779,7 +780,9 @@ const ReferralBonusWithdrawModal = ({
                   }
                 }}
               >
-                {submitting ? (
+                {isPending ? (
+                  language === 'ru' ? 'Уже в обработке...' : 'Withdrawal Pending...'
+                ) : submitting ? (
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                     <span style={{ 
                       display: 'inline-block',

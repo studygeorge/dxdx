@@ -165,12 +165,15 @@ const ReferralBonusWithdrawModal = ({
     const result = await onSubmit(e)
     
     if (result && result.success) {
+      // ✅ Backend теперь возвращает COMPLETED сразу, показываем success screen
+      setWithdrawalStatus('COMPLETED')
+      setCurrentStep(2)
+      
       if (result.data && result.data.withdrawalId) {
         setPendingWithdrawalId(result.data.withdrawalId)
       } else if (result.data && result.data.withdrawalIds && result.data.withdrawalIds.length > 0) {
         setPendingWithdrawalId(result.data.withdrawalIds[0])
       }
-      setCurrentStep(2)
     }
   }
 

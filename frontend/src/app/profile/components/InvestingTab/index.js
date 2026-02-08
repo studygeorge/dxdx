@@ -706,11 +706,6 @@ export default function InvestingTab({
       }
     }
 
-      amount: amountToWithdraw,
-      trc20Address: trc20Address.trim(),
-      withdrawType: withdrawType
-    })
-
     setSubmitting(true)
 
     try {

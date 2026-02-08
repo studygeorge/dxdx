@@ -35,12 +35,9 @@ export async function getReferralListHandler(request: FastifyRequest, reply: Fas
     const level2Referrals = await ReferralTreeService.getLevel2Referrals(level1Ids)
 
     const level1Data: ReferralData[] = []
-    let totalLevel1Commission = 0
 
     for (const ref of level1Referrals) {
       for (const investment of ref.investments) {
-        const commission = CommissionService.calculateCommission(Number(investment.amount), tierPercent)
-
         const earning = await prisma.referralEarning.findFirst({
           where: {
             referrerId: userId,
@@ -48,6 +45,9 @@ export async function getReferralListHandler(request: FastifyRequest, reply: Fas
             investmentId: investment.id
           }
         })
+
+        // ✅ Use actual earning amount from DB, not recalculated
+        const actualAmount = earning ? Number(earning.amount) : 0
 
         level1Data.push({
           fullUserId: ref.id,
@@ -57,22 +57,17 @@ export async function getReferralListHandler(request: FastifyRequest, reply: Fas
           investmentId: investment.id,
           investmentAmount: Number(investment.amount),
           investmentDate: investment.createdAt,
-          commission: parseFloat(commission.toFixed(2)),
+          commission: parseFloat(actualAmount.toFixed(2)),  // ✅ Use DB amount
           bonusWithdrawn: earning?.withdrawn || false,
           withdrawnAt: earning?.withdrawnAt || null
         })
-
-        totalLevel1Commission += commission
       }
     }
 
     const level2Data: ReferralData[] = []
-    let totalLevel2Commission = 0
 
     for (const ref of level2Referrals) {
       for (const investment of ref.investments) {
-        const commission = CommissionService.calculateCommission(Number(investment.amount), 0.03)
-
         const earning = await prisma.referralEarning.findFirst({
           where: {
             referrerId: userId,
@@ -80,6 +75,9 @@ export async function getReferralListHandler(request: FastifyRequest, reply: Fas
             investmentId: investment.id
           }
         })
+
+        // ✅ Use actual earning amount from DB, not recalculated
+        const actualAmount = earning ? Number(earning.amount) : 0
 
         level2Data.push({
           fullUserId: ref.id,
@@ -89,16 +87,21 @@ export async function getReferralListHandler(request: FastifyRequest, reply: Fas
           investmentId: investment.id,
           investmentAmount: Number(investment.amount),
           investmentDate: investment.createdAt,
-          commission: parseFloat(commission.toFixed(2)),
+          commission: parseFloat(actualAmount.toFixed(2)),  // ✅ Use DB amount
           bonusWithdrawn: earning?.withdrawn || false,
           withdrawnAt: earning?.withdrawnAt || null
         })
-
-        totalLevel2Commission += commission
       }
     }
 
-    const totalEarnings = totalLevel1Commission + totalLevel2Commission
+    // ✅ Calculate total from actual earnings (exclude withdrawn)
+    const allEarnings = await prisma.referralEarning.findMany({
+      where: {
+        referrerId: userId,
+        withdrawn: false  // ✅ Exclude withdrawn earnings
+      }
+    })
+    const totalEarnings = allEarnings.reduce((sum, e) => sum + Number(e.amount), 0)
     const uniqueLevel1 = new Set(level1Referrals.map(r => r.id)).size
     const uniqueLevel2 = new Set(level2Referrals.map(r => r.id)).size
 

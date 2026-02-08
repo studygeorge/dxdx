@@ -109,7 +109,6 @@ export default function WalletTab({ isMobile, language, user, walletAddress, onM
     setUpgradeError('')
     setUpgradeSuccess('')
 
-    console.log('🚀 WalletTab: Starting upgrade request with data:', upgradeData)
 
     const { upgradeType, newPackage, additionalAmount, newDuration, senderWalletAddress } = upgradeData
 
@@ -166,7 +165,6 @@ export default function WalletTab({ isMobile, language, user, walletAddress, onM
         requestBody.senderWalletAddress = ''
       }
       
-      console.log('📡 WalletTab: Sending request to backend:', requestBody)
 
       const response = await fetch(`${API_BASE_URL}/api/v1/investments/${selectedInvestment.id}/upgrade`, {
         method: 'POST',
@@ -178,7 +176,6 @@ export default function WalletTab({ isMobile, language, user, walletAddress, onM
         body: JSON.stringify(requestBody)
       })
 
-      console.log('📡 WalletTab: Response status:', response.status)
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -187,9 +184,7 @@ export default function WalletTab({ isMobile, language, user, walletAddress, onM
       }
 
       const result = await response.json()
-      console.log('✅ WalletTab: Full response received:', JSON.stringify(result, null, 2))
 
-      console.log('✅ WalletTab: Returning full result to UpgradeModal')
       
       setUpgradeSuccess(t.telegramBotInstructions || 'Request created successfully')
       

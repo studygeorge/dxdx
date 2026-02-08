@@ -16,37 +16,31 @@ export const AuthProvider = ({ children }) => {
   const checkAuthStatus = async () => {
     try {
       const token = localStorage.getItem('access_token')
-      console.log('🔍 Checking auth status, token:', token ? 'exists' : 'not found')
       
       if (token) {
-        console.log('📡 Making getProfile request')
         const response = await authAPI.getProfile()
-        console.log('✅ Profile response:', response)
         
         if (response.data && response.data.success) {
           const userData = response.data.data || response.data.user
-          console.log('👤 User data extracted:', userData)
           
           if (userData) {
             setUser(userData)
             setIsAuthenticated(true)
-            console.log('✅ User authenticated successfully')
           } else {
-            console.log('❌ No user data in response')
             throw new Error('No user data')
           }
         } else {
-          console.log('❌ Invalid response structure')
           throw new Error('Invalid response')
         }
       } else {
-        console.log('🚫 No token found')
         setUser(null)  
         setIsAuthenticated(false)
       }
     } catch (error) {
-      console.error('❌ Auth check error:', error)
-      console.error('❌ Error response:', error.response?.data)
+      // Only log critical errors in development
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Auth check error:', error)
+      }
       
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
@@ -54,17 +48,13 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(false)
     } finally {
       setLoading(false)
-      console.log('✅ Auth check completed')
     }
   }
 
   const login = async (email, password) => {
     try {
-      console.log('🔐 Login attempt:', { email })
-      
-      // ✅ Увеличенный таймаут до 60 секунд
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 секунд
+      const timeoutId = setTimeout(() => controller.abort(), 60000)
 
       const response = await authAPI.login({ 
         emailOrUsername: email,
@@ -72,7 +62,6 @@ export const AuthProvider = ({ children }) => {
       }, { signal: controller.signal })
       
       clearTimeout(timeoutId)
-      console.log('✅ Login response:', response.data)
       
       const responseData = response.data
       
@@ -97,14 +86,7 @@ export const AuthProvider = ({ children }) => {
         }
       }
       
-      console.log('🔑 Extracted tokens:', {
-        hasAccessToken: !!accessToken,
-        hasRefreshToken: !!refreshToken,
-        hasUserData: !!userData
-      })
-      
       if (!accessToken) {
-        console.error('❌ No access token in response!')
         return {
           success: false,
           error: 'No access token received from server'
@@ -116,35 +98,30 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('refresh_token', refreshToken)
       }
       
-      console.log('💾 Tokens saved to localStorage')
-      
       if (userData) {
         setUser(userData)
         setIsAuthenticated(true)
-        console.log('👤 User data set:', userData)
       } else {
-        console.log('📡 Fetching user data via /me endpoint')
         try {
           const profileResponse = await authAPI.getProfile()
           const profileData = profileResponse.data.data || profileResponse.data.user
           if (profileData) {
             setUser(profileData)
             setIsAuthenticated(true)
-            console.log('👤 User data fetched:', profileData)
           }
         } catch (profileError) {
-          console.error('❌ Failed to fetch profile:', profileError)
+          // Silent fail - not critical
         }
       }
       
       return { success: true, user: userData }
     } catch (error) {
-      console.error('❌ Login error:', error)
-      console.error('❌ Error response:', error.response?.data)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Login error:', error)
+      }
       
       let errorMessage = 'Login failed'
       
-      // ✅ Обработка таймаута
       if (error.name === 'AbortError') {
         errorMessage = 'Server timeout. Please try again.'
       } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
@@ -166,25 +143,12 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      console.log('📤 Registration request:', {
-        name: userData.name,
-        email: userData.email,
-        telegramId: userData.telegramId,
-        telegramUsername: userData.telegramUsername,
-        telegramFirstName: userData.telegramFirstName,
-        telegramLastName: userData.telegramLastName,
-        hasPassword: !!userData.password,
-        referralCode: userData.referralCode
-      })
-
-      // ✅ Увеличенный таймаут до 60 секунд
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 60000)
 
       const response = await authAPI.register(userData, { signal: controller.signal })
 
       clearTimeout(timeoutId)
-      console.log('✅ Registration response:', response.data)
 
       if (response.data.success) {
         return { 
@@ -199,8 +163,9 @@ export const AuthProvider = ({ children }) => {
         }
       }
     } catch (error) {
-      console.error('❌ Registration error:', error)
-      console.error('❌ Error response:', error.response?.data)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Registration error:', error)
+      }
       
       let errorMessage = 'Registration failed'
       
@@ -223,23 +188,19 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      console.log('🚪 Logging out...')
       await authAPI.logout()
-      console.log('✅ Logout request sent')
     } catch (error) {
-      console.error('❌ Logout error:', error)
+      // Silent fail - not critical
     } finally {
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('referralCode')
       setUser(null)
       setIsAuthenticated(false)
-      console.log('✅ User logged out, tokens cleared')
     }
   }
 
   const updateUser = (updatedUserData) => {
-    console.log('🔄 Updating user data:', updatedUserData)
     setUser(updatedUserData)
   }
 

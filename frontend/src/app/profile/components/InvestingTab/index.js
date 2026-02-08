@@ -424,7 +424,6 @@ export default function InvestingTab({
   }
 
   const handleWithdrawBonusClick = (investment) => {
-    console.log('🎯 handleWithdrawBonusClick called:', investment)
     
     const termBonus = getDurationBonus(
       investment.duration,
@@ -435,7 +434,6 @@ export default function InvestingTab({
     const halfTermDays = investment.duration === 6 ? 90 : investment.duration === 12 ? 180 : 0
     const isHalfTermPassed = actualDaysPassed >= halfTermDays
 
-    console.log('🎁 Bonus Check:', {
       investmentId: investment.id,
       duration: investment.duration,
       amount: parseFloat(investment.amount || 0),
@@ -478,7 +476,6 @@ export default function InvestingTab({
 
   // ✅ НОВЫЙ ОБРАБОТЧИК: Реинвестирование
   const handleReinvestClick = (investment) => {
-    console.log('🔄 handleReinvestClick called:', investment)
     
     const availableProfit = investment.availableProfit || 0
     
@@ -651,7 +648,6 @@ export default function InvestingTab({
   }
 
   const handleSubmitPartialWithdraw = async (e, withdrawType, customAmount) => {
-    console.log('🚀 handleSubmitPartialWithdraw CALLED:', {
       withdrawType,
       customAmount,
       selectedInvestment: selectedInvestment.id,
@@ -679,11 +675,9 @@ export default function InvestingTab({
     let amountToWithdraw = 0
 
     if (withdrawType === 'profit') {
-      console.log('💰 PROFIT withdrawal:', { customAmount })
       
       amountToWithdraw = parseFloat(customAmount)
       
-      console.log('💵 Amount to withdraw:', amountToWithdraw)
       
       if (!amountToWithdraw || amountToWithdraw <= 0) {
         console.error('❌ Invalid amount:', amountToWithdraw)
@@ -692,7 +686,6 @@ export default function InvestingTab({
       }
 
       const availableProfit = selectedInvestment.availableProfit || 0
-      console.log('📊 Available profit:', availableProfit)
       
       if (amountToWithdraw > availableProfit) {
         console.error('❌ Insufficient profit:', { amountToWithdraw, availableProfit })
@@ -700,14 +693,12 @@ export default function InvestingTab({
         return null
       }
     } else if (withdrawType === 'bonus') {
-      console.log('🎁 BONUS withdrawal')
       
       const termBonus = getDurationBonus(
         selectedInvestment.duration,
         parseFloat(selectedInvestment.amount)
       )
       
-      console.log('🎁 Calculated bonus:', termBonus)
       
       amountToWithdraw = termBonus
 
@@ -734,7 +725,6 @@ export default function InvestingTab({
       }
     }
 
-    console.log('📦 REQUEST BODY:', {
       amount: amountToWithdraw,
       trc20Address: trc20Address.trim(),
       withdrawType: withdrawType
@@ -772,7 +762,6 @@ export default function InvestingTab({
 
   const handleSubmitWithdrawBonus = async (address) => {
     try {
-      console.log('🚀 handleSubmitWithdrawBonus called')
       
       const token = localStorage.getItem('access_token')
       if (!token) {
@@ -786,7 +775,6 @@ export default function InvestingTab({
         parseFloat(selectedInvestment.amount)
       )
 
-      console.log('💰 Calculated bonus:', {
         duration: selectedInvestment.duration,
         amount: selectedInvestment.amount,
         termBonus
@@ -798,13 +786,11 @@ export default function InvestingTab({
       }
 
       const url = `${API_BASE_URL}/api/v1/investments/${selectedInvestment.id}/partial-withdraw`
-      console.log('📍 Request URL:', url)
 
       const requestBody = {
         trc20Address: address,
         withdrawType: 'bonus'
       }
-      console.log('📦 Request body:', requestBody)
 
       const response = await fetch(url, {
         method: 'POST',
@@ -816,7 +802,6 @@ export default function InvestingTab({
         body: JSON.stringify(requestBody)
       })
 
-      console.log('📊 Response status:', response.status)
 
       if (response.status === 401) {
         alert(language === 'ru' ? 'Сессия истекла. Войдите заново.' : 'Session expired. Please log in again.')
@@ -831,7 +816,6 @@ export default function InvestingTab({
       }
 
       const data = await response.json()
-      console.log('✅ Server response:', data)
 
       await refreshInvestments()
 

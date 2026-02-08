@@ -20,7 +20,6 @@ export const useReinvest = () => {
     setSuccess(null)
 
     try {
-      console.log('📤 API: Reinvesting profit:', { investmentId, amount })
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/investments/${investmentId}/reinvest`,
@@ -32,7 +31,6 @@ export const useReinvest = () => {
         }
       )
 
-      console.log('📡 Response status:', response.status)
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -41,7 +39,6 @@ export const useReinvest = () => {
       }
 
       const result = await response.json()
-      console.log('✅ Server response:', result)
 
       setSuccess('Profit reinvested successfully!')
       return result

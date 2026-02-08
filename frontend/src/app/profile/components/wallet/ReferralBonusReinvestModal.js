@@ -1,5 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
+import { calculateNewPlan, getNextActivationDate, getDaysUntilActivation } from './calculations'
 
 const ReferralBonusReinvestModal = ({ 
   totalAmount = 0,
@@ -43,7 +44,10 @@ const ReferralBonusReinvestModal = ({
       newPlan: 'New Plan',
       currentROI: 'Current ROI',
       newROI: 'New ROI',
-      upgradeAvailable: '⬆️ Upgrade Available',
+      upgradeAvailable: 'Upgrade Available',
+      activationDate: 'New rate will be applied from',
+      inDays: 'in',
+      days: 'days',
       confirmButton: 'Confirm Reinvestment',
       cancelButton: 'Cancel',
       successTitle: 'Bonuses Reinvested!',
@@ -72,7 +76,10 @@ const ReferralBonusReinvestModal = ({
       newPlan: 'Новый план',
       currentROI: 'Текущий ROI',
       newROI: 'Новый ROI',
-      upgradeAvailable: '⬆️ Доступен апгрейд',
+      upgradeAvailable: 'Доступен апгрейд',
+      activationDate: 'Новая ставка будет применена с',
+      inDays: 'через',
+      days: 'дней',
       confirmButton: 'Подтвердить реинвестирование',
       cancelButton: 'Отмена',
       successTitle: 'Бонусы реинвестированы!',
@@ -158,6 +165,15 @@ const ReferralBonusReinvestModal = ({
   const currentPlan = calculateNewPlan(selectedInvestment?.amount || 0, 0)
   const newPlan = calculateNewPlan(selectedInvestment?.amount || 0, availableAmount)
   const willUpgrade = newPlan.roi > currentPlan.roi
+
+  // Calculate activation date (15th or 30th of the month)
+  const activationDate = getNextActivationDate(new Date())
+  const daysUntilActivation = getDaysUntilActivation(activationDate)
+  const formattedActivationDate = activationDate ? new Intl.DateTimeFormat(language === 'ru' ? 'ru-RU' : 'en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  }).format(new Date(activationDate)) : ''
 
   return (
     <div 
@@ -553,18 +569,45 @@ const ReferralBonusReinvestModal = ({
                         </div>
 
                         {willUpgradeCalc && (
-                          <div style={{
-                            marginTop: '12px',
-                            padding: '8px 12px',
-                            background: 'rgba(45, 212, 191, 0.1)',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            color: '#2dd4bf',
-                            fontWeight: '600',
-                            textAlign: 'center'
-                          }}>
-                            {t.upgradeAvailable}: {currentPlanCalc.roi}% → {newPlanCalc.roi}%
-                          </div>
+                          <>
+                            <div style={{
+                              marginTop: '12px',
+                              padding: '8px 12px',
+                              background: 'rgba(45, 212, 191, 0.1)',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                              color: '#2dd4bf',
+                              fontWeight: '600',
+                              textAlign: 'center'
+                            }}>
+                              {t.upgradeAvailable}: {currentPlanCalc.roi}% → {newPlanCalc.roi}%
+                            </div>
+                            {(() => {
+                              const activationDate = getNextActivationDate()
+                              const daysUntil = getDaysUntilActivation(activationDate)
+                              const dateStr = activationDate.toLocaleDateString(language === 'ru' ? 'ru-RU' : 'en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })
+                              return (
+                                <div style={{
+                                  marginTop: '8px',
+                                  padding: '8px 12px',
+                                  background: 'rgba(251, 191, 36, 0.1)',
+                                  border: '1px solid rgba(251, 191, 36, 0.3)',
+                                  borderRadius: '12px',
+                                  fontSize: '11px',
+                                  color: '#fbbf24',
+                                  fontWeight: '500',
+                                  textAlign: 'center',
+                                  lineHeight: '1.4'
+                                }}>
+                                  {t.activationDate} {dateStr} ({t.inDays} {daysUntil} {t.days})
+                                </div>
+                              )
+                            })()}
+                          </>
                         )}
                       </div>
                     )
@@ -586,6 +629,24 @@ const ReferralBonusReinvestModal = ({
                 textAlign: 'center'
               }}>
                 {error}
+              </div>
+            )}
+
+            {/* Activation Date Information */}
+            {selectedInvestment && willUpgrade && (
+              <div style={{
+                marginBottom: '20px',
+                padding: '12px 16px',
+                background: 'rgba(251, 191, 36, 0.1)',
+                border: '1px solid rgba(251, 191, 36, 0.3)',
+                borderRadius: '16px',
+                fontSize: '13px',
+                color: '#fbbf24',
+                fontWeight: '500',
+                textAlign: 'center',
+                lineHeight: '1.5'
+              }}>
+                {t.activationDate} {formattedActivationDate} ({t.inDays} {daysUntilActivation} {t.days})
               </div>
             )}
 

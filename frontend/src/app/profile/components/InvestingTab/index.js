@@ -434,19 +434,6 @@ export default function InvestingTab({
     const halfTermDays = investment.duration === 6 ? 90 : investment.duration === 12 ? 180 : 0
     const isHalfTermPassed = actualDaysPassed >= halfTermDays
 
-      investmentId: investment.id,
-      duration: investment.duration,
-      amount: parseFloat(investment.amount || 0),
-      termBonus,
-      bonusWithdrawn: investment.bonusWithdrawn,
-      daysPassed: investment.daysPassed,
-      actualDaysPassed,
-      halfTermDays,
-      isHalfTermPassed,
-      createdAt: investment.createdAt,
-      upgradedAt: investment.upgradedAt
-    })
-
     if (termBonus <= 0) {
       alert(t.noBonusAvailable || 'No bonus available for this investment')
       return

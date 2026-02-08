@@ -37,18 +37,44 @@ export async function reinvestToInvestmentHandler(
       })
     }
 
-    const availableItems = await WithdrawalService.collectAvailableEarnings(userId)
+    // ✅ Find all non-withdrawn earnings (like bulk withdraw)
+    const earnings = await prisma.referralEarning.findMany({
+      where: {
+        referrerId: userId,
+        withdrawn: false,
+        status: 'COMPLETED'
+      },
+      include: {
+        investment: true
+      }
+    })
 
-    if (availableItems.length === 0) {
+    if (earnings.length === 0) {
       return reply.code(400).send({
         success: false,
         error: 'No available referral earnings to reinvest'
       })
     }
 
-    const availableAmount = availableItems.reduce((sum, item) => sum + item.amount, 0)
+    const now = new Date()
+    
+    // ✅ Filter by 31-day rule and ACTIVE investment status
+    const availableEarnings = earnings.filter(earning => {
+      if (!earning.investment?.createdAt) return false
+      if (earning.investment.status !== 'ACTIVE') return false
+      const investmentDate = new Date(earning.investment.createdAt)
+      const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+      return daysPassed >= 31
+    })
 
-    await WithdrawalService.markEarningsAsWithdrawn(availableItems, userId)
+    if (availableEarnings.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error: 'No bonuses available yet (31 days required or investment withdrawn)'
+      })
+    }
+
+    const availableAmount = availableEarnings.reduce((sum, e) => sum + Number(e.amount), 0)
 
     const currentAmount = Number(investment.amount)
     const newTotalAmount = currentAmount + availableAmount
@@ -56,7 +82,6 @@ export async function reinvestToInvestmentHandler(
     const { package: newPackage, roi: newROI } = CommissionService.determineNewPackage(newTotalAmount)
     const upgraded = CommissionService.isUpgraded(investment.plan.name, newPackage)
 
-    const now = new Date()
     let activationDate: Date | null = null
 
     if (upgraded) {
@@ -64,39 +89,56 @@ export async function reinvestToInvestmentHandler(
       activationDate = CalculationsService.getNextActivationDate(now)
     }
 
-    await prisma.investment.update({
-      where: { id: investmentId },
-      data: {
-        amount: newTotalAmount,
-        ...(upgraded ? {
-          pendingUpgradeROI: newROI,
-          pendingUpgradePlan: newPackage,
-          upgradeActivationDate: activationDate,
-          upgradeRequestDate: now
-        } : {
-          roi: newROI,
-          effectiveROI: newROI
-        })
-      }
-    })
+    // ✅ CRITICAL: Use transaction for atomic operations
+    await prisma.$transaction(async (tx) => {
+      // Mark all earnings as withdrawn
+      await tx.referralEarning.updateMany({
+        where: {
+          id: { in: availableEarnings.map(e => e.id) }
+        },
+        data: {
+          withdrawn: true,
+          withdrawnAt: now,
+          status: 'COMPLETED'
+        }
+      })
 
-    await prisma.investmentReinvest.create({
-      data: {
-        investmentId,
-        userId,
-        reinvestedAmount: availableAmount,
-        fromProfit: availableAmount,
-        oldPackage: investment.plan.name,
-        newPackage,
-        oldROI: Number(investment.roi),
-        newROI,
-        oldAmount: currentAmount,
-        newAmount: newTotalAmount,
-        upgraded,
-        status: 'COMPLETED',
-        requestDate: now,
-        processedDate: now
-      }
+      // Update investment
+      await tx.investment.update({
+        where: { id: investmentId },
+        data: {
+          amount: newTotalAmount,
+          ...(upgraded ? {
+            pendingUpgradeROI: newROI,
+            pendingUpgradePlan: newPackage,
+            upgradeActivationDate: activationDate,
+            upgradeRequestDate: now
+          } : {
+            roi: newROI,
+            effectiveROI: newROI
+          })
+        }
+      })
+
+      // Create reinvest record
+      await tx.investmentReinvest.create({
+        data: {
+          investmentId,
+          userId,
+          reinvestedAmount: availableAmount,
+          fromProfit: availableAmount,
+          oldPackage: investment.plan.name,
+          newPackage,
+          oldROI: Number(investment.roi),
+          newROI,
+          oldAmount: currentAmount,
+          newAmount: newTotalAmount,
+          upgraded,
+          status: 'COMPLETED',
+          requestDate: now,
+          processedDate: now
+        }
+      })
     })
 
     return reply.send({

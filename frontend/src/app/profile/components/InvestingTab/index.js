@@ -694,9 +694,15 @@ export default function InvestingTab({
 
       const availableProfit = selectedInvestment.availableProfit || 0
       
-      if (amountToWithdraw > availableProfit) {
-        console.error('❌ Insufficient profit:', { amountToWithdraw, availableProfit })
-        setWithdrawError(t.insufficientProfit || 'Insufficient profit')
+      // ✅ Allow withdrawal if amount is equal or less (with 0.01 tolerance for float precision)
+      const tolerance = 0.01
+      if (amountToWithdraw > availableProfit + tolerance) {
+        console.error('❌ Insufficient profit:', { 
+          amountToWithdraw, 
+          availableProfit,
+          difference: amountToWithdraw - availableProfit 
+        })
+        setWithdrawError(`${t.insufficientProfit || 'Insufficient profit'}. Available: $${availableProfit.toFixed(2)}, Requested: $${amountToWithdraw.toFixed(2)}`)
         return null
       }
     } else if (withdrawType === 'bonus') {

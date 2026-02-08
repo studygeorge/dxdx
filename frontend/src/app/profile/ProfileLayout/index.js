@@ -19,6 +19,7 @@ import { useNavigation } from './hooks/useNavigation'
 import { translations, getTabs } from './constants'
 import { setupViewport, injectGlobalStyles } from './utils/viewport'
 import { authAPI } from '../../utils/api' 
+import { useInvestmentsGlobal } from './hooks/useInvestmentsGlobal' 
 
 export default function ProfileLayout({ isMobile }) {
   const router = useRouter()
@@ -57,6 +58,16 @@ export default function ProfileLayout({ isMobile }) {
     connectWallet,
     disconnectWallet
   } = useWallet(translations[language], user, refreshUserData)
+
+  // Global investments state - single source of truth
+  const {
+    investments: globalInvestments,
+    loading: investmentsLoading,
+    refreshInvestments: globalRefreshInvestments,
+    activeInvestments,
+    completedInvestments,
+    totalInvestments
+  } = useInvestmentsGlobal(user)
 
   // Referral modals state
   const [hasReferralModalOpen, setHasReferralModalOpen] = useState(false)
@@ -154,6 +165,8 @@ export default function ProfileLayout({ isMobile }) {
             kycStatus={kycStatus}
             onOpenKYCModal={() => setShowKYCModal(true)}
             onNavigateToInvestments={handleNavigateToInvestments}
+            investments={globalInvestments}
+            investmentsLoading={investmentsLoading}
           />
         )
       
@@ -168,6 +181,9 @@ export default function ProfileLayout({ isMobile }) {
             setShowWeb3Modal={setShowWeb3Modal}
             user={user}
             onModalStateChange={setHasOpenModal}
+            userInvestments={globalInvestments}
+            investmentsLoading={investmentsLoading}
+            refreshInvestments={globalRefreshInvestments}
           />
         )
       

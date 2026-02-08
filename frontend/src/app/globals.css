@@ -15,6 +15,9 @@
     height: 100%;
     overflow-x: hidden; /* ✅ Только горизонтальный скролл блокируем */
     overflow-y: scroll; /* ✅ ВАЖНО: всегда показываем вертикальный скролл */
+    /* ✅ Hardware acceleration for smooth scrolling */
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-top: 20px;
   }
   
   body {

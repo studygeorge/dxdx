@@ -43,14 +43,12 @@ export const injectGlobalStyles = () => {
     
     @keyframes glow-pulse-bright {
       0%, 100% {
-        box-shadow: 0 0 30px rgba(45, 212, 191, 0.8),
-                    0 0 60px rgba(45, 212, 191, 0.5),
-                    inset 0 0 30px rgba(45, 212, 191, 0.3);
+        box-shadow: 0 0 20px rgba(45, 212, 191, 0.6),
+                    0 0 40px rgba(45, 212, 191, 0.3);
       }
       50% {
-        box-shadow: 0 0 45px rgba(45, 212, 191, 1),
-                    0 0 90px rgba(45, 212, 191, 0.7),
-                    inset 0 0 45px rgba(45, 212, 191, 0.4);
+        box-shadow: 0 0 25px rgba(45, 212, 191, 0.8),
+                    0 0 50px rgba(45, 212, 191, 0.4);
       }
     }
     @keyframes shimmer {
@@ -77,14 +75,12 @@ export const injectGlobalStyles = () => {
     }
     @keyframes white-glow {
       0%, 100% {
-        box-shadow: 0 0 25px rgba(255, 255, 255, 0.6),
-                    0 0 50px rgba(255, 255, 255, 0.4),
-                    inset 0 0 25px rgba(255, 255, 255, 0.2);
+        box-shadow: 0 0 18px rgba(255, 255, 255, 0.5),
+                    0 0 35px rgba(255, 255, 255, 0.3);
       }
       50% {
-        box-shadow: 0 0 35px rgba(255, 255, 255, 0.8),
-                    0 0 70px rgba(255, 255, 255, 0.5),
-                    inset 0 0 35px rgba(255, 255, 255, 0.3);
+        box-shadow: 0 0 22px rgba(255, 255, 255, 0.7),
+                    0 0 45px rgba(255, 255, 255, 0.4);
       }
     }
     @keyframes modalSlideIn {

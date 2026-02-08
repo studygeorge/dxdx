@@ -12,7 +12,7 @@ import InvestmentsList from './components/InvestmentsList'
 import InvestForm from './components/InvestForm-Compact' // ✅ КОМПАКТНАЯ ВЕРСИЯ
 import PaymentStep from './components/PaymentStep'
 import ConfirmationStep from './components/ConfirmationStep'
-import { useInvestments } from './hooks/useInvestments'
+// ✅ useInvestments removed - using parent data
 import { useKYC } from './hooks/useKYC'
 import { useModals } from './hooks/useModals'
 import { investmentAPI } from './utils/api'
@@ -30,7 +30,10 @@ export default function InvestingTab({
   walletAddress = '',
   setShowWeb3Modal,
   onModalStateChange,
-  user 
+  user,
+  userInvestments: externalInvestments, // ✅ From parent (cached)
+  investmentsLoading, // ✅ Loading state from parent
+  refreshInvestments: externalRefreshInvestments // ✅ Refresh function from parent
 }) {
   // Состояния
   const [selectedPlan, setSelectedPlan] = useState(null)
@@ -52,7 +55,10 @@ export default function InvestingTab({
   const [submitting, setSubmitting] = useState(false)
 
   // Хуки
-  const { userInvestments, refreshInvestments } = useInvestments(user)
+  // ✅ Use external investments data (no duplicate fetch)
+  const userInvestments = externalInvestments || []
+  const refreshInvestments = externalRefreshInvestments || (() => {})
+  
   const { userKYCStatus, kycChecked, refreshKYCStatus } = useKYC(user)
   const modals = useModals(onModalStateChange)
 

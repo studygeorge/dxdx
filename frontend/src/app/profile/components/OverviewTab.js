@@ -204,12 +204,6 @@ export default function OverviewTab({
           if (status === 'ACTIVE') {
             activePlans++
           }
-
-            amount,
-            availableProfit,
-            withdrawnProfits,
-            status
-          })
         })
 
         const totalCapital = capitalInWork + availableBalance
@@ -218,15 +212,6 @@ export default function OverviewTab({
         const accumulatedReturnPercent = capitalInWork > 0 
           ? (totalAccumulatedProfit / capitalInWork) * 100 
           : 0
-
-          totalCapital,
-          capitalInWork,
-          availableBalance,
-          totalWithdrawnProfit,
-          totalAccumulatedProfit,
-          accumulatedReturnPercent: accumulatedReturnPercent.toFixed(2) + '%',
-          activePlans
-        })
 
         setPortfolioData({
           totalCapital,

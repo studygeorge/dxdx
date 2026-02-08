@@ -293,11 +293,6 @@ const UpgradeModal = ({
         setUpgradeId(upgradeIdValue);
         setAdminWalletAddress(adminWalletValue);
         
-          upgradeId: upgradeIdValue,
-          adminWallet: adminWalletValue,
-          senderWallet: senderWalletValue
-        });
-
         if (!adminWalletValue) {
           console.error('❌ CRITICAL: adminWallet not found in response!');
           console.error('   Full response.data:', result.data);

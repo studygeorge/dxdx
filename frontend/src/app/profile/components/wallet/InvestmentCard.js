@@ -14,19 +14,6 @@ export default function InvestmentCard({
   t, 
   isMobile 
 }) {
-    id: investment.id,
-    planName: investment.planName,
-    status: investment.status,
-    isCompleted: investment.isCompleted,
-    daysPassed: investment.daysPassed,
-    daysRemaining: investment.daysRemaining,
-    duration: investment.duration,
-    amount: investment.amount,
-    bonusWithdrawn: investment.bonusWithdrawn,
-    availableProfit: investment.availableProfit,
-    pendingUpgrade: investment.pendingUpgrade
-  })
-
   const daysPassed = investment.daysPassed || 0
   const daysRemaining = investment.daysRemaining || 0
   const currentReturn = investment.currentReturn || 0

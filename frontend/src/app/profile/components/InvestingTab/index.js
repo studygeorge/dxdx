@@ -751,11 +751,6 @@ export default function InvestingTab({
         parseFloat(selectedInvestment.amount)
       )
 
-        duration: selectedInvestment.duration,
-        amount: selectedInvestment.amount,
-        termBonus
-      })
-
       if (termBonus <= 0) {
         alert(language === 'ru' ? 'Бонус недоступен для данной инвестиции' : 'No bonus available for this investment')
         return { success: false }

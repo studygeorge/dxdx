@@ -150,10 +150,15 @@ const ReferralBonusWithdrawModal = ({
       e.stopPropagation()
     }
     
+    console.log('🎯 handleSubmit called')
+    
     const result = await onSubmit(e)
+    
+    console.log('📦 onSubmit result:', result)
     
     if (result && result.success) {
       // ✅ Backend возвращает COMPLETED сразу, показываем success screen
+      console.log('✅ Setting withdrawalStatus to COMPLETED and currentStep to 2')
       setWithdrawalStatus('COMPLETED')
       setCurrentStep(2)
       
@@ -275,7 +280,7 @@ const ReferralBonusWithdrawModal = ({
         </button>
 
         {currentStep === 2 ? (
-          withdrawalStatus === 'APPROVED' ? (
+          (withdrawalStatus === 'COMPLETED' || withdrawalStatus === 'APPROVED') ? (
             // Success Screen
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <div style={{

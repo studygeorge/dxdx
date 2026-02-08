@@ -96,7 +96,7 @@ export class WithdrawalService {
         referralEarningId,
         amount: finalAmount, // ✅ Берём из обновлённого earning
         trc20Address,
-        status: 'PENDING'
+        status: 'COMPLETED'  // ✅ COMPLETED сразу, Telegram уже отправлен
       }
     })
 

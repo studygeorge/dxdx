@@ -17,6 +17,7 @@ export default function WithdrawBonusModal({
 }) {
   const [showTelegramLink, setShowTelegramLink] = useState(false)
   const [botLink, setBotLink] = useState('')
+  const [showSuccessScreen, setShowSuccessScreen] = useState(false)
 
   // ✅ ФУНКЦИЯ РАСЧЁТА БОНУСА ВНУТРИ КОМПОНЕНТА
   const getDurationBonus = () => {
@@ -46,10 +47,8 @@ export default function WithdrawBonusModal({
         setBotLink(result.data.botLink)
         setShowTelegramLink(true)
       } else {
-        // ✅ Закрываем модал автоматически через 2 секунды после успешной отправки
-        setTimeout(() => {
-          handleClose()
-        }, 2000)
+        // Show success screen instead of auto-closing
+        setShowSuccessScreen(true)
       }
     }
   }
@@ -66,6 +65,7 @@ export default function WithdrawBonusModal({
   const handleClose = () => {
     setShowTelegramLink(false)
     setBotLink('')
+    setShowSuccessScreen(false)
     setTrc20Address('')
     onClose()
   }
@@ -116,7 +116,7 @@ export default function WithdrawBonusModal({
             margin: 0,
             letterSpacing: '-0.8px'
           }}>
-            {t.withdrawBonusButton || 'Вывести бонус'}
+            {t.withdrawBonusTitle || 'Withdraw Bonus'}
           </h2>
 
           <button
@@ -148,7 +148,94 @@ export default function WithdrawBonusModal({
           </button>
         </div>
 
-        {!showTelegramLink ? (
+        {showSuccessScreen ? (
+          // Success Screen
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <div style={{
+              width: '80px',
+              height: '80px',
+              margin: '0 auto 24px',
+              background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.2) 0%, rgba(20, 184, 166, 0.2) 100%)',
+              border: '2px solid rgba(45, 212, 191, 0.4)',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+
+            <h2 style={{
+              fontSize: isMobile ? '22px' : '26px',
+              fontWeight: '700',
+              color: '#ffffff',
+              margin: '0 0 16px',
+              letterSpacing: '-0.02em'
+            }}>
+              {t.requestSubmitted || 'Request Submitted'}
+            </h2>
+
+            <p style={{
+              fontSize: isMobile ? '14px' : '16px',
+              color: 'rgba(255, 255, 255, 0.8)',
+              margin: '0 0 24px',
+              lineHeight: '1.6'
+            }}>
+              {t.bonusWithdrawMessage || 'Your bonus withdrawal request has been submitted to support team. The bonus will be transferred to your account after verification.'}
+            </p>
+
+            <div style={{
+              background: 'rgba(45, 212, 191, 0.1)',
+              border: '1px solid rgba(45, 212, 191, 0.3)',
+              borderRadius: '16px',
+              padding: '16px',
+              marginBottom: '24px'
+            }}>
+              <div style={{
+                fontSize: isMobile ? '13px' : '14px',
+                color: 'rgba(255, 255, 255, 0.7)',
+                marginBottom: '8px'
+              }}>
+                {t.bonusAmount || 'Bonus Amount'}:
+              </div>
+              <div style={{
+                fontSize: isMobile ? '24px' : '28px',
+                fontWeight: '700',
+                color: '#2dd4bf'
+              }}>
+                ${termBonus}
+              </div>
+            </div>
+
+            <button
+              onClick={handleClose}
+              style={{
+                width: '100%',
+                padding: isMobile ? '14px' : '16px',
+                background: 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)',
+                border: 'none',
+                borderRadius: '16px',
+                color: '#000000',
+                fontSize: isMobile ? '14px' : '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.3s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.02)'
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(45, 212, 191, 0.4)'
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)'
+                e.currentTarget.style.boxShadow = 'none'
+              }}
+            >
+              {t.gotIt || 'Got it'}
+            </button>
+          </div>
+        ) : !showTelegramLink ? (
           <>
             <div style={{
               background: 'rgba(45, 212, 191, 0.1)',
@@ -266,7 +353,7 @@ export default function WithdrawBonusModal({
                   type="text"
                   value={trc20Address}
                   onChange={(e) => setTrc20Address(e.target.value)}
-                  placeholder={t.enterTrc20Address || 'Введите ваш TRC-20 адрес'}
+                  placeholder={t.trc20AddressPlaceholder || 'Enter your TRON wallet address'}
                   required
                   style={{
                     width: '100%',
@@ -344,7 +431,7 @@ export default function WithdrawBonusModal({
                     transition: 'all 0.3s'
                   }}
                 >
-                  {submitting ? (t.processing || 'Обработка...') : (t.submitRequest || 'Отправить запрос')}
+                  {submitting ? (t.processing || 'Processing...') : (t.submitRequest || 'Submit Request')}
                 </button>
 
                 <button

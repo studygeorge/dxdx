@@ -120,7 +120,17 @@ export default function InvestingTab({
       withdrawBonusButton: 'Withdraw Bonus',
       noBonusAvailable: 'No bonus available for this investment',
       bonusAlreadyWithdrawn: 'Bonus has already been withdrawn',
-      bonusAvailableIn: 'Bonus will be available in'
+      bonusAvailableIn: 'Bonus will be available in',
+      withdrawBonusTitle: 'Withdraw Bonus',
+      termBonus: 'Term Bonus',
+      trc20AddressLabel: 'TRC-20 wallet address',
+      trc20AddressPlaceholder: 'Enter your TRON wallet address',
+      submitRequest: 'Submit Request',
+      processing: 'Processing',
+      requestSubmitted: 'Request Submitted',
+      bonusWithdrawMessage: 'Your bonus withdrawal request has been submitted to support team. The bonus will be transferred to your account after verification.',
+      gotIt: 'Got it',
+      bonusAmount: 'Bonus Amount'
     },
     ru: {
       ...walletTranslations.ru,
@@ -183,7 +193,17 @@ export default function InvestingTab({
       withdrawBonusButton: 'Вывести бонус',
       noBonusAvailable: 'Бонус недоступен для данной инвестиции',
       bonusAlreadyWithdrawn: 'Бонус уже был выведен',
-      bonusAvailableIn: 'Бонус будет доступен через'
+      bonusAvailableIn: 'Бонус будет доступен через',
+      withdrawBonusTitle: 'Вывод бонуса',
+      termBonus: 'Бонус за срок',
+      trc20AddressLabel: 'TRC-20 адрес кошелька',
+      trc20AddressPlaceholder: 'Введите адрес вашего TRON кошелька',
+      submitRequest: 'Отправить запрос',
+      processing: 'Обработка',
+      requestSubmitted: 'Запрос отправлен',
+      bonusWithdrawMessage: 'Ваша заявка на вывод бонуса отправлена в службу поддержки. Бонус будет переведен на ваш счет после проверки.',
+      gotIt: 'Понятно',
+      bonusAmount: 'Сумма бонуса'
     }
   }
   const t = translations[language]

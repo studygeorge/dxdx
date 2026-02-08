@@ -635,12 +635,6 @@ export default function InvestingTab({
   }
 
   const handleSubmitPartialWithdraw = async (e, withdrawType, customAmount) => {
-      withdrawType,
-      customAmount,
-      selectedInvestment: selectedInvestment.id,
-      availableProfit: selectedInvestment.availableProfit
-    })
-
     if (e) {
       e.preventDefault()
       e.stopPropagation()

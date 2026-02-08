@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 
 export const FallingStars = () => {
   const [stars, setStars] = useState([])
@@ -360,26 +360,106 @@ export const TiffanyNebula = ({ isMobile }) => {
 }
 
 export const VideoBackground = ({ isMobile }) => {
+  const videoRef = React.useRef(null)
+  const [isLoaded, setIsLoaded] = React.useState(false)
+  const [isPlaying, setIsPlaying] = React.useState(false)
+
+  React.useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    // Handle video loaded
+    const handleCanPlayThrough = () => {
+      setIsLoaded(true)
+      // Start playing only when fully loaded
+      video.play().then(() => {
+        setIsPlaying(true)
+      }).catch(err => {
+        console.error('Video play failed:', err)
+      })
+    }
+
+    // Handle video errors
+    const handleError = (e) => {
+      console.error('Video load error:', e)
+      setIsLoaded(false)
+    }
+
+    // Pause video when tab is hidden (performance optimization)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        video.pause()
+      } else if (isPlaying) {
+        video.play().catch(() => {})
+      }
+    }
+
+    video.addEventListener('canplaythrough', handleCanPlayThrough)
+    video.addEventListener('error', handleError)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    // Force load
+    video.load()
+
+    return () => {
+      video.removeEventListener('canplaythrough', handleCanPlayThrough)
+      video.removeEventListener('error', handleError)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [isMobile, isPlaying])
+
   return (
     <div style={{
       position: 'fixed',
       inset: 0,
       zIndex: 0,
-      transform: 'translateZ(0)',
-      backfaceVisibility: 'hidden',
-      willChange: 'auto'
+      overflow: 'hidden',
+      pointerEvents: 'none'
     }}>
+      {/* Show loading placeholder until video loads */}
+      {!isLoaded && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: '#000000',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            color: '#2dd4bf',
+            fontSize: '14px',
+            opacity: 0.5
+          }}>
+            Loading...
+          </div>
+        </div>
+      )}
+      
       <video
-        autoPlay
+        ref={videoRef}
         loop
         muted
         playsInline
+        preload="auto"
+        webkit-playsinline="true"
+        x5-playsinline="true"
+        x-webkit-airplay="allow"
+        disablePictureInPicture
+        controlsList="nodownload nofullscreen noremoteplayback"
         style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          transform: 'translateZ(0)',
-          backfaceVisibility: 'hidden'
+          opacity: isPlaying ? 1 : 0,
+          transition: 'opacity 0.5s ease-in',
+          transform: 'translate3d(0, 0, 0)',
+          backfaceVisibility: 'hidden',
+          WebkitTransform: 'translate3d(0, 0, 0)',
+          WebkitBackfaceVisibility: 'hidden'
         }}
       >
         <source
@@ -387,8 +467,10 @@ export const VideoBackground = ({ isMobile }) => {
           type="video/mp4"
         />
       </video>
+      
+      {/* Dark overlay */}
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         inset: 0,
         background: 'rgba(0, 0, 0, 0.65)',
         transform: 'translateZ(0)',

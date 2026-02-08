@@ -172,7 +172,7 @@ const ReferralBonusReinvestModal = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 9999,
+        zIndex: 99999,
         padding: '20px'
       }}
       onClick={(e) => {
@@ -455,9 +455,10 @@ const ReferralBonusReinvestModal = ({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {investments.map((inv) => {
                     const isSelected = selectedInvestment?.id === inv.id
-                    const newAmount = inv.amount + availableAmount
-                    const currentPlanCalc = calculateNewPlan(inv.amount, 0)
-                    const newPlanCalc = calculateNewPlan(inv.amount, availableAmount)
+                    const invAmount = Number(inv.amount) || 0
+                    const newAmount = invAmount + availableAmount
+                    const currentPlanCalc = calculateNewPlan(invAmount, 0)
+                    const newPlanCalc = calculateNewPlan(invAmount, availableAmount)
                     const willUpgradeCalc = newPlanCalc.roi > currentPlanCalc.roi
 
                     return (
@@ -538,7 +539,7 @@ const ReferralBonusReinvestModal = ({
                               {t.currentAmount}
                             </div>
                             <div style={{ color: '#ffffff', fontWeight: '600' }}>
-                              ${inv.amount.toFixed(2)}
+                              ${Number(inv.amount || 0).toFixed(2)}
                             </div>
                           </div>
                           <div>

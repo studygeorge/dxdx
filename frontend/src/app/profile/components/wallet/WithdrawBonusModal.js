@@ -41,9 +41,16 @@ export default function WithdrawBonusModal({
     
     const result = await onSubmit(trc20Address)
     
-    if (result?.success && result?.data?.botLink) {
-      setBotLink(result.data.botLink)
-      setShowTelegramLink(true)
+    if (result?.success) {
+      if (result?.data?.botLink) {
+        setBotLink(result.data.botLink)
+        setShowTelegramLink(true)
+      } else {
+        // ✅ Закрываем модал автоматически через 2 секунды после успешной отправки
+        setTimeout(() => {
+          handleClose()
+        }, 2000)
+      }
     }
   }
 

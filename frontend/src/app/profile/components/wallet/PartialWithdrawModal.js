@@ -64,7 +64,9 @@ const PartialWithdrawModal = ({
   };
 
   const handleMaxClick = () => {
-    setCustomAmount(availableProfit.toFixed(2));
+    // ✅ Subtract $0.01 to avoid float precision issues
+    const safeMax = Math.max(0, availableProfit - 0.01);
+    setCustomAmount(safeMax.toFixed(2));
   };
 
   const LoadingSpinner = () => (
@@ -577,13 +579,14 @@ const PartialWithdrawModal = ({
                   MAX
                 </button>
               </div>
-              {parseFloat(customAmount) > availableProfit && (
+              {/* ✅ Tolerance 0.02 for float precision */}
+              {parseFloat(customAmount) > availableProfit + 0.02 && (
                 <div style={{
                   fontSize: '11px',
                   color: '#ef4444',
                   marginTop: '6px'
                 }}>
-                  {t.insufficientProfit || 'Insufficient available profit'}
+                  {`${t.insufficientProfit || 'Insufficient available profit'}. Available: $${availableProfit.toFixed(2)}`}
                 </div>
               )}
             </div>
@@ -619,34 +622,41 @@ const PartialWithdrawModal = ({
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
-              <button
-                type="button"
-                onClick={(e) => handleSubmit(e, 'profit')}
-                disabled={submitting || !trc20Address || !customAmount || parseFloat(customAmount) <= 0 || parseFloat(customAmount) > availableProfit}
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  background: (submitting || !trc20Address || !customAmount || parseFloat(customAmount) <= 0 || parseFloat(customAmount) > availableProfit)
-                    ? 'rgba(16, 185, 129, 0.3)' 
-                    : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  border: 'none',
-                  borderRadius: '16px',
-                  color: (submitting || !trc20Address || !customAmount || parseFloat(customAmount) <= 0 || parseFloat(customAmount) > availableProfit)
-                    ? 'rgba(255, 255, 255, 0.4)' 
-                    : '#000000',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: (submitting || !trc20Address || !customAmount || parseFloat(customAmount) <= 0 || parseFloat(customAmount) > availableProfit)
-                    ? 'not-allowed' 
-                    : 'pointer',
-                  transition: 'all 0.3s',
-                  letterSpacing: '-0.3px',
-                  boxShadow: (submitting || !trc20Address || !customAmount || parseFloat(customAmount) <= 0 || parseFloat(customAmount) > availableProfit)
-                    ? 'none'
-                    : '0 4px 12px rgba(16, 185, 129, 0.25)'
-                }}
-                onMouseOver={(e) => {
-                  if (!submitting && trc20Address && customAmount && parseFloat(customAmount) > 0 && parseFloat(customAmount) <= availableProfit) {
+              {(() => {
+                // ✅ Float precision tolerance 0.02
+                const tolerance = 0.02;
+                const amount = parseFloat(customAmount);
+                const isInvalid = submitting || !trc20Address || !customAmount || amount <= 0 || amount > availableProfit + tolerance;
+                
+                return (
+                  <button
+                    type="button"
+                    onClick={(e) => handleSubmit(e, 'profit')}
+                    disabled={isInvalid}
+                    style={{
+                      width: '100%',
+                      padding: '14px',
+                      background: isInvalid
+                        ? 'rgba(16, 185, 129, 0.3)' 
+                        : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      border: 'none',
+                      borderRadius: '16px',
+                      color: isInvalid
+                        ? 'rgba(255, 255, 255, 0.4)' 
+                        : '#000000',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: isInvalid
+                        ? 'not-allowed' 
+                        : 'pointer',
+                      transition: 'all 0.3s',
+                      letterSpacing: '-0.3px',
+                      boxShadow: isInvalid
+                        ? 'none'
+                        : '0 4px 12px rgba(16, 185, 129, 0.25)'
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isInvalid) {
                     e.currentTarget.style.transform = 'scale(1.02)';
                     e.currentTarget.style.boxShadow = '0 6px 16px rgba(16, 185, 129, 0.35)';
                   }
@@ -658,6 +668,8 @@ const PartialWithdrawModal = ({
               >
                 {submitting ? (t.processing || 'Processing...') : (t.withdrawProfit || 'Withdraw Profit')}
               </button>
+                )
+              })()}
 
               {hasBonusInfo && isBonusUnlocked && !isBonusWithdrawn && (
                 <button

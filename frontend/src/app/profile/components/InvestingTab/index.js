@@ -694,8 +694,9 @@ export default function InvestingTab({
 
       const availableProfit = selectedInvestment.availableProfit || 0
       
-      // ✅ Allow withdrawal if amount is equal or less (with 0.01 tolerance for float precision)
-      const tolerance = 0.01
+      // ✅ Allow withdrawal if amount is equal or less (with 0.02 tolerance for float precision)
+      // Increased from 0.01 to 0.02 to handle edge cases
+      const tolerance = 0.02
       if (amountToWithdraw > availableProfit + tolerance) {
         console.error('❌ Insufficient profit:', { 
           amountToWithdraw, 

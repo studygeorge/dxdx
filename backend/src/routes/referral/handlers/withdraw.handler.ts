@@ -89,15 +89,22 @@ export async function withdrawBonusHandler(
 
     console.log(`💵 CALCULATED COMMISSION: $${commissionAmount.toFixed(2)} = ${(commissionPercent * 100).toFixed(0)}% × $${Number(investment.amount).toFixed(2)}`)
 
-    // ✅ Создаём или обновляем earning с ПРАВИЛЬНОЙ суммой
-    const referralEarning = await WithdrawalService.getOrCreateEarning(
-      userId,
-      referralUserId,
-      investmentId,
-      commissionAmount,
-      commissionPercent,
-      level
-    )
+    // ✅ Find existing earning (no force updates!)
+    const referralEarning = await prisma.referralEarning.findFirst({
+      where: {
+        referrerId: userId,
+        userId: referralUserId,
+        investmentId,
+        status: 'COMPLETED'  // Only completed earnings can be withdrawn
+      }
+    })
+
+    if (!referralEarning) {
+      return reply.code(404).send({
+        success: false,
+        error: 'Referral earning not found'
+      })
+    }
 
     console.log(`💾 ReferralEarning in DB: id=${referralEarning.id}, amount=$${Number(referralEarning.amount).toFixed(2)}`)
 
@@ -121,28 +128,57 @@ export async function withdrawBonusHandler(
     if (existingRequest) {
       return reply.code(400).send({
         success: false,
-        error: 'Withdrawal request already pending',
+        error: 'Withdrawal request already completed',
         data: { withdrawalId: existingRequest.id }
       })
     }
 
-    // ✅ ИСПРАВЛЕНО: 5 параметров (без amount)
-    const withdrawalRequest = await WithdrawalService.createWithdrawalRequest(
-      userId,
-      referralUserId,
-      investmentId,
-      referralEarning.id,
-      trc20Address // ✅ 5-й параметр
-    )
+    // ✅ CRITICAL: Use transaction for atomic operations
+    const withdrawalRequest = await prisma.$transaction(async (tx) => {
+      // Update earning as withdrawn
+      await tx.referralEarning.update({
+        where: { id: referralEarning.id },
+        data: {
+          withdrawn: true,
+          withdrawnAt: new Date(),
+          status: 'COMPLETED'
+        }
+      })
 
-    // ✅ КРИТИЧНО: Обновить earning.withdrawn = true
-    await prisma.referralEarning.update({
-      where: { id: referralEarning.id },
-      data: {
-        withdrawn: true,
-        withdrawnAt: new Date(),
-        status: 'COMPLETED'
-      }
+      // Create withdrawal request
+      const withdrawal = await tx.referralWithdrawalRequest.create({
+        data: {
+          userId,
+          referralUserId,
+          investmentId,
+          referralEarningId: referralEarning.id,
+          amount: Number(referralEarning.amount),  // ✅ Use existing amount, no recalculation
+          trc20Address: trc20Address.trim(),
+          status: 'COMPLETED'  // ✅ Withdrawal completed, admin notified
+        }
+      })
+
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'REFERRAL_BONUS_WITHDRAWAL_REQUESTED',
+          resource: 'REFERRAL',
+          details: JSON.stringify({
+            withdrawalRequestId: withdrawal.id,
+            referralUserId,
+            investmentId,
+            amount: withdrawal.amount.toString(),
+            commissionRate: `${Math.round(commissionPercent * 100)}%`,
+            level,
+            trc20Address
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      return withdrawal
     })
 
     console.log(`✅ Withdrawal request created: id=${withdrawalRequest.id}, amount=$${Number(withdrawalRequest.amount).toFixed(2)}`)
@@ -172,30 +208,12 @@ export async function withdrawBonusHandler(
       console.log('✅ Telegram notification sent successfully')
     } catch (telegramError: any) {
       console.error('❌ Failed to send Telegram notification:', telegramError)
+      // Don't fail the request if notification fails
     }
-
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action: 'REFERRAL_BONUS_WITHDRAWAL_REQUESTED',
-        resource: 'REFERRAL',
-        details: JSON.stringify({
-          withdrawalRequestId: withdrawalRequest.id,
-          referralUserId,
-          investmentId,
-          amount: withdrawalRequest.amount.toString(),
-          commissionRate: `${commissionRate}%`,
-          level,
-          trc20Address
-        }),
-        ipAddress: request.ip,
-        success: true
-      }
-    })
 
     return reply.send({
       success: true,
-      message: 'Referral bonus withdrawal request submitted successfully',
+      message: 'Referral bonus withdrawal completed successfully',
       data: {
         withdrawalId: withdrawalRequest.id,
         amount: parseFloat(finalAmount.toFixed(2)),
@@ -222,45 +240,112 @@ export async function bulkWithdrawHandler(
     const userId = request.currentUser!.id
     const { trc20Address } = request.body
 
-    ValidationUtils.validateTRC20AddressWithError(trc20Address)
+    console.log('💰 Bulk withdrawal request:', { userId, trc20Address })
 
-    const availableItems = await WithdrawalService.collectAvailableEarnings(userId)
-
-    if (availableItems.length === 0) {
+    if (!trc20Address || !trc20Address.trim()) {
       return reply.code(400).send({
         success: false,
-        error: 'No available referral earnings to withdraw'
+        error: 'TRC-20 address is required'
       })
     }
 
-    let totalAmount = 0
-    const withdrawalIds: string[] = []
+    ValidationUtils.validateTRC20AddressWithError(trc20Address)
 
-    for (const item of availableItems) {
-      const earning = await WithdrawalService.getOrCreateEarning(
-        userId,
-        item.referralUserId,
-        item.investmentId,
-        item.amount,
-        item.percentage,
-        item.level
-      )
+    // ✅ Find all non-withdrawn earnings (no force updates!)
+    const earnings = await prisma.referralEarning.findMany({
+      where: {
+        referrerId: userId,
+        withdrawn: false,
+        status: 'COMPLETED'  // Only completed earnings can be withdrawn
+      },
+      include: {
+        investment: true,
+        user: true
+      }
+    })
 
-      // ✅ ИСПРАВЛЕНО: 5 параметров (без amount)
-      const withdrawal = await WithdrawalService.createWithdrawalRequest(
-        userId,
-        item.referralUserId,
-        item.investmentId,
-        earning.id,
-        trc20Address // ✅ 5-й параметр
-      )
-
-      withdrawalIds.push(withdrawal.id)
-      totalAmount += Number(withdrawal.amount)
+    if (earnings.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error: 'No available bonuses to withdraw'
+      })
     }
 
-    console.log(`💵 Bulk withdrawal total: $${totalAmount.toFixed(2)}`)
+    const now = new Date()
+    
+    // ✅ Filter by 31-day rule and ACTIVE investment status
+    const availableEarnings = earnings.filter(earning => {
+      if (!earning.investment?.createdAt) return false
+      // ✅ Check investment is still active (not withdrawn early)
+      if (earning.investment.status !== 'ACTIVE') return false
+      const investmentDate = new Date(earning.investment.createdAt)
+      const daysPassed = Math.floor((now.getTime() - investmentDate.getTime()) / (1000 * 60 * 60 * 24))
+      return daysPassed >= 31
+    })
 
+    if (availableEarnings.length === 0) {
+      return reply.code(400).send({
+        success: false,
+        error: 'No bonuses available yet (31 days required or investment withdrawn)'
+      })
+    }
+
+    const totalAmount = availableEarnings.reduce((sum, e) => sum + Number(e.amount), 0)
+
+    // ✅ CRITICAL: Use transaction for atomic operations
+    const withdrawalRequests = await prisma.$transaction(async (tx) => {
+      // Update all earnings as withdrawn
+      await tx.referralEarning.updateMany({
+        where: {
+          id: { in: availableEarnings.map(e => e.id) }
+        },
+        data: {
+          withdrawn: true,
+          withdrawnAt: now,
+          status: 'COMPLETED'
+        }
+      })
+
+      // Create one withdrawal_request per earning
+      const withdrawals = await Promise.all(
+        availableEarnings.map(earning => 
+          tx.referralWithdrawalRequest.create({
+            data: {
+              userId,
+              referralUserId: earning.userId,
+              investmentId: earning.investmentId,
+              referralEarningId: earning.id,
+              amount: Number(earning.amount),  // ✅ Use existing amount, no recalculation
+              trc20Address: trc20Address.trim(),
+              status: 'COMPLETED'  // ✅ Withdrawal completed, admin notified
+            }
+          })
+        )
+      )
+
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'REFERRAL_BULK_WITHDRAWAL',
+          resource: 'REFERRAL',
+          details: JSON.stringify({
+            withdrawalIds: withdrawals.map(w => w.id),
+            totalAmount,
+            count: availableEarnings.length,
+            trc20Address: trc20Address.trim()
+          }),
+          ipAddress: request.ip,
+          success: true
+        }
+      })
+
+      return withdrawals
+    })
+
+    console.log(`💵 Bulk withdrawal completed: $${totalAmount.toFixed(2)}, ${withdrawalRequests.length} bonuses`)
+
+    // ✅ Send Telegram notification AFTER successful transaction
     try {
       const { notifyBulkReferralWithdrawal } = await import('../../../bot/telegram-bot')
       const user = await prisma.user.findUnique({
@@ -268,28 +353,30 @@ export async function bulkWithdrawHandler(
         select: { email: true }
       })
 
-      console.log(`📤 Sending bulk Telegram notification with total: $${totalAmount.toFixed(2)}`)
+      console.log(`📤 Sending bulk Telegram notification: $${totalAmount.toFixed(2)}`)
 
       await notifyBulkReferralWithdrawal(
         userId,
         user?.email || 'Unknown',
         totalAmount,
         trc20Address,
-        withdrawalIds.length
+        withdrawalRequests.length
       )
 
-      console.log('✅ Bulk Telegram notification sent successfully')
+      console.log('✅ Telegram notification sent successfully')
     } catch (telegramError: any) {
       console.error('❌ Failed to send Telegram notification:', telegramError)
+      // Don't fail the request if notification fails
     }
 
     return reply.send({
       success: true,
-      message: `Bulk withdrawal request submitted for ${withdrawalIds.length} referral earnings`,
+      message: `Bulk withdrawal completed for ${withdrawalRequests.length} referral bonuses`,
       data: {
         totalAmount: parseFloat(totalAmount.toFixed(2)),
-        count: withdrawalIds.length,
-        withdrawalIds
+        count: withdrawalRequests.length,
+        withdrawalIds: withdrawalRequests.map(w => w.id),
+        status: 'COMPLETED'
       }
     })
 

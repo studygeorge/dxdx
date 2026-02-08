@@ -135,6 +135,16 @@ export async function withdrawBonusHandler(
       trc20Address // ✅ 5-й параметр
     )
 
+    // ✅ КРИТИЧНО: Обновить earning.withdrawn = true
+    await prisma.referralEarning.update({
+      where: { id: referralEarning.id },
+      data: {
+        withdrawn: true,
+        withdrawnAt: new Date(),
+        status: 'COMPLETED'
+      }
+    })
+
     console.log(`✅ Withdrawal request created: id=${withdrawalRequest.id}, amount=$${Number(withdrawalRequest.amount).toFixed(2)}`)
 
     const user = await prisma.user.findUnique({
@@ -191,7 +201,7 @@ export async function withdrawBonusHandler(
         amount: parseFloat(finalAmount.toFixed(2)),
         commissionRate: `${commissionRate}%`,
         level,
-        status: 'PENDING'
+        status: 'COMPLETED'  // ✅ Вывод завершён
       }
     })
 

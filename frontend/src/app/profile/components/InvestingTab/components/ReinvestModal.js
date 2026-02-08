@@ -621,6 +621,8 @@ const ReinvestModal = ({
                   t.reinvestProfit || 'Reinvest Profit'
                 )}
               </button>
+                )
+              })()}
 
               <button
                 type="button"
@@ -654,8 +656,6 @@ const ReinvestModal = ({
               >
                 {t.cancel || 'Cancel'}
               </button>
-                )
-              })()}
             </div>
           </form>
         )}

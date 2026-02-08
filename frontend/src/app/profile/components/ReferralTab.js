@@ -25,6 +25,7 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
   const [withdrawError, setWithdrawError] = useState('')
   const [withdrawSuccess, setWithdrawSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [hasPendingWithdrawal, setHasPendingWithdrawal] = useState(false)
   const [isTokenReady, setIsTokenReady] = useState(false)
   const [userInvestments, setUserInvestments] = useState([])
   const [loadingInvestments, setLoadingInvestments] = useState(false)
@@ -533,6 +534,8 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
       const result = await response.json()
 
       if (response.ok && result.success) {
+        // ✅ Mark withdrawal as pending
+        setHasPendingWithdrawal(true)
         setWithdrawSuccess(t.bulkWithdrawSuccess)
         setTrc20Address('')
         setTimeout(() => {
@@ -541,6 +544,10 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
         }, 2000)
         return { success: true, data: result.data }
       } else {
+        // Check if error is "already pending"
+        if (result.error && result.error.toLowerCase().includes('pending')) {
+          setHasPendingWithdrawal(true)
+        }
         setWithdrawError(result.error || t.withdrawError)
         return { success: false, error: result.error }
       }
@@ -1115,20 +1122,20 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
         }}>
           <button
             onClick={handleBulkWithdrawAll}
-            disabled={referralData.totalEarnings <= 0}
+            disabled={referralData.totalEarnings <= 0 || hasPendingWithdrawal}
             style={{
               padding: '20px',
-              background: referralData.totalEarnings > 0
+              background: (referralData.totalEarnings > 0 && !hasPendingWithdrawal)
                 ? 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)'
                 : 'rgba(255, 255, 255, 0.05)',
-              border: referralData.totalEarnings > 0
+              border: (referralData.totalEarnings > 0 && !hasPendingWithdrawal)
                 ? '1px solid rgba(45, 212, 191, 0.3)'
                 : '1px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '24px',
-              color: referralData.totalEarnings > 0 ? '#000000' : 'rgba(255, 255, 255, 0.3)',
+              color: (referralData.totalEarnings > 0 && !hasPendingWithdrawal) ? '#000000' : 'rgba(255, 255, 255, 0.3)',
               fontSize: '15px',
               fontWeight: '600',
-              cursor: referralData.totalEarnings > 0 ? 'pointer' : 'not-allowed',
+              cursor: (referralData.totalEarnings > 0 && !hasPendingWithdrawal) ? 'pointer' : 'not-allowed',
               transition: 'all 0.3s',
               letterSpacing: '-0.3px',
               display: 'flex',
@@ -1137,7 +1144,7 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
               gap: '8px'
             }}
             onMouseOver={(e) => {
-              if (referralData.totalEarnings > 0) {
+              if (referralData.totalEarnings > 0 && !hasPendingWithdrawal) {
                 e.currentTarget.style.transform = 'scale(1.02)'
                 e.currentTarget.style.boxShadow = '0 8px 16px rgba(45, 212, 191, 0.3)'
               }
@@ -1147,12 +1154,12 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
               e.currentTarget.style.boxShadow = 'none'
             }}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ opacity: referralData.totalEarnings > 0 ? 1 : 0.3 }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ opacity: (referralData.totalEarnings > 0 && !hasPendingWithdrawal) ? 1 : 0.3 }}>
               <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <div>{t.withdrawAll}</div>
+            <div>{hasPendingWithdrawal ? 'Withdrawal Pending...' : t.withdrawAll}</div>
             <div style={{
               fontSize: '12px',
               opacity: 0.8,

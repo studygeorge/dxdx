@@ -26,6 +26,10 @@ export async function referralRoutes(fastify: FastifyInstance) {
     preHandler: [authenticate]
   }, getReferralListHandler)
 
+  fastify.get('/pending-withdrawals', {
+    preHandler: [authenticate]
+  }, ReferralsController.checkPendingWithdrawals)
+
   fastify.get('/earnings', {
     preHandler: [authenticate]
   }, getEarningsHandler)

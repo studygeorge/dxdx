@@ -181,6 +181,32 @@ export class ReferralsController {
     }
   }
 
+  // ✅ GET /pending-withdrawals - Check if user has PENDING withdrawal requests
+  static async checkPendingWithdrawals(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const userId = request.currentUser!.id
+
+      const pendingWithdrawals = await prisma.referralWithdrawalRequest.findMany({
+        where: {
+          userId: userId,
+          status: 'PENDING'
+        }
+      })
+
+      return reply.send({
+        success: true,
+        hasPending: pendingWithdrawals.length > 0,
+        count: pendingWithdrawals.length
+      })
+    } catch (error) {
+      console.error('❌ Error checking pending withdrawals:', error)
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to check pending withdrawals'
+      })
+    }
+  }
+
   // ✅ POST /withdraw-bonus - С TIERED-ЛОГИКОЙ
   static async withdrawReferralBonus(request: FastifyRequest, reply: FastifyReply) {
     try {
@@ -188,6 +214,22 @@ export class ReferralsController {
       const { referralId, amount } = request.body as { referralId: string; amount: number }
 
       console.log('💰 Referral bonus withdrawal request:', { userId, referralId, amount })
+
+      // ✅ ПРОВЕРКА: Есть ли уже PENDING withdrawal requests?
+      const pendingWithdrawals = await prisma.referralWithdrawalRequest.findMany({
+        where: {
+          userId: userId,
+          status: 'PENDING'
+        }
+      })
+
+      if (pendingWithdrawals.length > 0) {
+        console.log(`⚠️  User ${userId} has ${pendingWithdrawals.length} PENDING withdrawal(s)`)
+        return reply.code(400).send({
+          success: false,
+          error: 'Withdrawal request already pending'
+        })
+      }
 
       // Найти реферальный доход
       const earning = await prisma.referralEarning.findFirst({
@@ -310,6 +352,22 @@ export class ReferralsController {
         return reply.code(400).send({
           success: false,
           error: 'TRC-20 address is required'
+        })
+      }
+
+      // ✅ ПРОВЕРКА: Есть ли уже PENDING withdrawal requests?
+      const pendingWithdrawals = await prisma.referralWithdrawalRequest.findMany({
+        where: {
+          userId: userId,
+          status: 'PENDING'
+        }
+      })
+
+      if (pendingWithdrawals.length > 0) {
+        console.log(`⚠️  User ${userId} has ${pendingWithdrawals.length} PENDING withdrawal(s)`)
+        return reply.code(400).send({
+          success: false,
+          error: 'Withdrawal request already pending'
         })
       }
 

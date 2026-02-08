@@ -465,6 +465,9 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
         setPendingWithdrawalReferrals(prev => new Set([...prev, selectedReferral.fullUserId]))
         setWithdrawSuccess(t.withdrawSuccess)
         
+        // ✅ Обновить данные чтобы withdrawn бонус исчез
+        await fetchReferralData()
+        
         setSubmitting(false)
         
         return { 
@@ -546,10 +549,15 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
         setHasPendingWithdrawal(true)
         setWithdrawSuccess(t.bulkWithdrawSuccess)
         setTrc20Address('')
+        
+        // ✅ Обновить данные СРАЗУ, чтобы withdrawn бонусы исчезли
+        await fetchReferralData()
+        
+        // Закрыть modal через 1 секунду после обновления
         setTimeout(() => {
           setShowBulkWithdrawModal(false)
-          fetchReferralData()
-        }, 2000)
+        }, 1000)
+        
         return { success: true, data: result.data }
       } else {
         // Check if error is "already pending"
@@ -613,10 +621,13 @@ export default function ReferralTab({ isMobile, language, user, onModalStateChan
 
       if (response.ok && result.success) {
         setWithdrawSuccess(t.reinvestSuccess)
+        
+        // ✅ Обновить данные чтобы reinvested бонусы исчезли
+        await fetchReferralData()
+        
         setTimeout(() => {
           setShowReinvestModal(false)
-          fetchReferralData()
-        }, 2000)
+        }, 1000)
         return { success: true, data: result.data }
       } else {
         setWithdrawError(result.error || t.withdrawError)

@@ -52,6 +52,27 @@ export default function KYCModal({
   const [loading, setLoading] = useState(true)
   const [showSuccessScreen, setShowSuccessScreen] = useState(false)
 
+  // ✅ Скрываем нижнее меню на мобильных когда модалка открыта
+  useEffect(() => {
+    if (isOpen && isMobile) {
+      // Находим нижнее меню и скрываем его
+      const bottomNav = document.querySelector('[class*="NavigationMobile"]') 
+        || document.querySelector('nav[class*="fixed bottom"]')
+        || document.querySelector('nav[class*="mobile"]')
+      
+      if (bottomNav) {
+        bottomNav.style.display = 'none'
+      }
+
+      // Возвращаем меню обратно при закрытии
+      return () => {
+        if (bottomNav) {
+          bottomNav.style.display = ''
+        }
+      }
+    }
+  }, [isOpen, isMobile])
+
   const translations = {
     en: {
       title: 'KYC Verification',

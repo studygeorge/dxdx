@@ -21,6 +21,28 @@ export default function CameraCapture({
   const [cameraReady, setCameraReady] = useState(false)
   const [supportedMimeType, setSupportedMimeType] = useState('')
 
+  // ✅ Скрываем мобильное меню когда камера открыта
+  useEffect(() => {
+    if (isMobile) {
+      // Находим нижнее меню и скрываем его
+      const bottomNav = document.querySelector('[class*="NavigationMobile"]') 
+        || document.querySelector('nav[class*="fixed bottom"]')
+        || document.querySelector('nav[class*="mobile"]')
+        || document.querySelector('.mobile-navigation')
+      
+      if (bottomNav) {
+        bottomNav.style.display = 'none'
+      }
+
+      // Возвращаем меню обратно при закрытии камеры
+      return () => {
+        if (bottomNav) {
+          bottomNav.style.display = ''
+        }
+      }
+    }
+  }, [isMobile])
+
   const translations = {
     en: {
       photoTitle: 'Take Document Photo',
@@ -430,7 +452,7 @@ export default function CameraCapture({
 
       {/* Controls */}
       <div style={{
-        padding: isMobile ? '20px 20px 100px 20px' : '20px',  // ✅ Добавлен отступ снизу для мобильных
+        padding: isMobile ? '20px 20px 150px 20px' : '20px',  // ✅ Увеличен отступ до 150px для мобильных
         background: 'rgba(0, 0, 0, 0.9)',
         borderTop: '1px solid rgba(255, 255, 255, 0.1)',
         display: 'flex',

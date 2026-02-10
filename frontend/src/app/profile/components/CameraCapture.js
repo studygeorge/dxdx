@@ -414,7 +414,7 @@ export default function CameraCapture({
         {!isRecording && cameraReady && (
           <div style={{
             position: 'absolute',
-            bottom: '120px',
+            bottom: isMobile ? '140px' : '120px',
             left: '50%',
             transform: 'translateX(-50%)',
             background: 'rgba(0, 0, 0, 0.7)',
@@ -448,97 +448,104 @@ export default function CameraCapture({
             {error}
           </div>
         )}
-      </div>
 
-      {/* Controls */}
-      <div style={{
-        padding: isMobile ? '20px 20px 150px 20px' : '20px',  // ✅ Увеличен отступ до 150px для мобильных
-        background: 'rgba(0, 0, 0, 0.9)',
-        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '12px'
-      }}>
-        <button
-          onClick={() => {
-            stopCamera()
-            onClose()
-          }}
-          disabled={isRecording}
-          style={{
-            padding: '14px 24px',
-            background: isRecording ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.1)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '16px',
-            color: isRecording ? 'rgba(255, 255, 255, 0.3)' : '#ffffff',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: isRecording ? 'not-allowed' : 'pointer'
-          }}
-        >
-          {t.cancel}
-        </button>
-
-        {mode === 'photo' && (
+        {/* ✅ КНОПКИ ПЕРЕНЕСЕНЫ ПРЯМО НА ВИДЕО */}
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '12px',
+          zIndex: 20,
+          width: '90%',
+          maxWidth: '400px'
+        }}>
           <button
-            onClick={handleCapturePhoto}
-            disabled={!cameraReady}
+            onClick={() => {
+              stopCamera()
+              onClose()
+            }}
+            disabled={isRecording}
             style={{
-              padding: '14px 32px',
-              background: cameraReady
-                ? 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)'
-                : 'rgba(45, 212, 191, 0.3)',
-              border: 'none',
+              padding: '14px 24px',
+              background: isRecording ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.7)',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
               borderRadius: '16px',
-              color: cameraReady ? '#000000' : 'rgba(0, 0, 0, 0.5)',
+              color: isRecording ? 'rgba(255, 255, 255, 0.3)' : '#ffffff',
               fontSize: '14px',
               fontWeight: '600',
-              cursor: cameraReady ? 'pointer' : 'not-allowed'
+              cursor: isRecording ? 'not-allowed' : 'pointer',
+              backdropFilter: 'blur(10px)'
             }}
           >
-            {t.capturePhoto}
+            {t.cancel}
           </button>
-        )}
 
-        {mode === 'video' && !isRecording && (
-          <button
-            onClick={handleStartRecording}
-            disabled={!cameraReady || !supportedMimeType}
-            style={{
-              padding: '14px 32px',
-              background: (cameraReady && supportedMimeType)
-                ? 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)'
-                : 'rgba(45, 212, 191, 0.3)',
-              border: 'none',
-              borderRadius: '16px',
-              color: (cameraReady && supportedMimeType) ? '#000000' : 'rgba(0, 0, 0, 0.5)',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: (cameraReady && supportedMimeType) ? 'pointer' : 'not-allowed'
-            }}
-          >
-            {t.startRecording}
-          </button>
-        )}
+          {mode === 'photo' && (
+            <button
+              onClick={handleCapturePhoto}
+              disabled={!cameraReady}
+              style={{
+                padding: '14px 32px',
+                background: cameraReady
+                  ? 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)'
+                  : 'rgba(45, 212, 191, 0.3)',
+                border: 'none',
+                borderRadius: '16px',
+                color: cameraReady ? '#000000' : 'rgba(0, 0, 0, 0.5)',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: cameraReady ? 'pointer' : 'not-allowed',
+                boxShadow: cameraReady ? '0 4px 20px rgba(45, 212, 191, 0.4)' : 'none'
+              }}
+            >
+              {t.capturePhoto}
+            </button>
+          )}
 
-        {mode === 'video' && isRecording && (
-          <button
-            onClick={handleStopRecording}
-            style={{
-              padding: '14px 32px',
-              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-              border: 'none',
-              borderRadius: '16px',
-              color: '#ffffff',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 0 20px rgba(239, 68, 68, 0.5)'
-            }}
-          >
-            {t.stopRecording}
-          </button>
-        )}
+          {mode === 'video' && !isRecording && (
+            <button
+              onClick={handleStartRecording}
+              disabled={!cameraReady || !supportedMimeType}
+              style={{
+                padding: '14px 32px',
+                background: (cameraReady && supportedMimeType)
+                  ? 'linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%)'
+                  : 'rgba(45, 212, 191, 0.3)',
+                border: 'none',
+                borderRadius: '16px',
+                color: (cameraReady && supportedMimeType) ? '#000000' : 'rgba(0, 0, 0, 0.5)',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: (cameraReady && supportedMimeType) ? 'pointer' : 'not-allowed',
+                boxShadow: (cameraReady && supportedMimeType) ? '0 4px 20px rgba(45, 212, 191, 0.4)' : 'none'
+              }}
+            >
+              {t.startRecording}
+            </button>
+          )}
+
+          {mode === 'video' && isRecording && (
+            <button
+              onClick={handleStopRecording}
+              style={{
+                padding: '14px 32px',
+                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                border: 'none',
+                borderRadius: '16px',
+                color: '#ffffff',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                boxShadow: '0 4px 20px rgba(239, 68, 68, 0.6)'
+              }}
+            >
+              {t.stopRecording}
+            </button>
+          )}
+        </div>
       </div>
 
       <style jsx>{`

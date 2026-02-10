@@ -52,16 +52,27 @@ export default function KYCModal({
   const [loading, setLoading] = useState(true)
   const [showSuccessScreen, setShowSuccessScreen] = useState(false)
 
-  // ✅ Скрываем нижнее меню на мобильных когда модалка открыта
+  // ✅ Скрываем сайдбар и мобильное меню когда модалка открыта
   useEffect(() => {
-    if (isOpen && isMobile) {
-      // Находим нижнее меню и скрываем его
+    if (isOpen) {
+      // Находим и скрываем мобильное меню
       const bottomNav = document.querySelector('[class*="NavigationMobile"]') 
         || document.querySelector('nav[class*="fixed bottom"]')
         || document.querySelector('nav[class*="mobile"]')
+        || document.querySelector('.mobile-navigation')
+      
+      // Находим и скрываем сайдбар
+      const sidebar = document.querySelector('[class*="NavigationDesktop"]')
+        || document.querySelector('aside')
+        || document.querySelector('[class*="sidebar"]')
+        || document.querySelector('nav[class*="desktop"]')
       
       if (bottomNav) {
         bottomNav.style.display = 'none'
+      }
+      
+      if (sidebar) {
+        sidebar.style.display = 'none'
       }
 
       // Возвращаем меню обратно при закрытии
@@ -69,9 +80,12 @@ export default function KYCModal({
         if (bottomNav) {
           bottomNav.style.display = ''
         }
+        if (sidebar) {
+          sidebar.style.display = ''
+        }
       }
     }
-  }, [isOpen, isMobile])
+  }, [isOpen])
 
   const translations = {
     en: {

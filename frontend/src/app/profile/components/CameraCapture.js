@@ -449,18 +449,20 @@ export default function CameraCapture({
           </div>
         )}
 
-        {/* ✅ КНОПКИ ПЕРЕНЕСЕНЫ ПРЯМО НА ВИДЕО */}
+        {/* ✅ КНОПКИ СПРАВА ПО ЦЕНТРУ НА МОБИЛЬНЫХ */}
         <div style={{
           position: 'absolute',
-          bottom: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
+          right: isMobile ? '20px' : '50%',
+          top: isMobile ? '50%' : 'auto',
+          bottom: isMobile ? 'auto' : '20px',
+          transform: isMobile ? 'translateY(-50%)' : 'translateX(50%)',
           display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
           justifyContent: 'center',
           gap: '12px',
           zIndex: 20,
-          width: '90%',
-          maxWidth: '400px'
+          width: isMobile ? 'auto' : '90%',
+          maxWidth: isMobile ? 'none' : '400px'
         }}>
           <button
             onClick={() => {
@@ -477,7 +479,9 @@ export default function CameraCapture({
               fontSize: '14px',
               fontWeight: '600',
               cursor: isRecording ? 'not-allowed' : 'pointer',
-              backdropFilter: 'blur(10px)'
+              backdropFilter: 'blur(10px)',
+              minWidth: isMobile ? '80px' : 'auto',
+              whiteSpace: 'nowrap'
             }}
           >
             {t.cancel}
@@ -498,7 +502,9 @@ export default function CameraCapture({
                 fontSize: '14px',
                 fontWeight: '600',
                 cursor: cameraReady ? 'pointer' : 'not-allowed',
-                boxShadow: cameraReady ? '0 4px 20px rgba(45, 212, 191, 0.4)' : 'none'
+                boxShadow: cameraReady ? '0 4px 20px rgba(45, 212, 191, 0.4)' : 'none',
+                minWidth: isMobile ? '80px' : 'auto',
+                whiteSpace: 'nowrap'
               }}
             >
               {t.capturePhoto}
@@ -520,7 +526,9 @@ export default function CameraCapture({
                 fontSize: '14px',
                 fontWeight: '600',
                 cursor: (cameraReady && supportedMimeType) ? 'pointer' : 'not-allowed',
-                boxShadow: (cameraReady && supportedMimeType) ? '0 4px 20px rgba(45, 212, 191, 0.4)' : 'none'
+                boxShadow: (cameraReady && supportedMimeType) ? '0 4px 20px rgba(45, 212, 191, 0.4)' : 'none',
+                minWidth: isMobile ? '80px' : 'auto',
+                whiteSpace: 'nowrap'
               }}
             >
               {t.startRecording}
@@ -539,7 +547,9 @@ export default function CameraCapture({
                 fontSize: '14px',
                 fontWeight: '600',
                 cursor: 'pointer',
-                boxShadow: '0 4px 20px rgba(239, 68, 68, 0.6)'
+                boxShadow: '0 4px 20px rgba(239, 68, 68, 0.6)',
+                minWidth: isMobile ? '80px' : 'auto',
+                whiteSpace: 'nowrap'
               }}
             >
               {t.stopRecording}

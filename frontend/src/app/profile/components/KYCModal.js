@@ -409,6 +409,18 @@ export default function KYCModal({
           left: 0,
           right: 0,
           bottom: 0,
+          background: 'rgba(0, 0, 0, 0.9)',
+          backdropFilter: 'blur(20px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 999999,  // ✅ Максимальный z-index чтобы покрыть всё
+          padding: isMobile ? '16px' : '20px'
+        }}
+        onClick={onClose}
+      >
+          right: 0,
+          bottom: 0,
           background: 'rgba(0, 0, 0, 0.85)',
           backdropFilter: 'blur(20px)',
           display: 'flex',
@@ -568,7 +580,7 @@ export default function KYCModal({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 10000,
+        zIndex: 999999,  // ✅ Максимальный z-index чтобы покрыть сайдбар и всё остальное
         padding: isMobile ? '16px' : '20px'
       }}
       onClick={kycStatus === 'APPROVED' ? onClose : null}

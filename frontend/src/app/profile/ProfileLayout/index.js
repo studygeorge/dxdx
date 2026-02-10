@@ -84,6 +84,33 @@ export default function ProfileLayout({ isMobile }) {
     }
   }, [])
 
+  // Hide navigation when KYC modal is open
+  useEffect(() => {
+    if (showKYCModal) {
+      // Hide desktop sidebar
+      const desktopNav = document.querySelector('[style*="position: fixed"][style*="left: 0"]')
+      if (desktopNav) {
+        desktopNav.style.display = 'none'
+      }
+
+      // Hide mobile bottom navigation
+      const mobileNav = document.querySelector('[style*="position: fixed"][style*="bottom: 0"]')
+      if (mobileNav) {
+        mobileNav.style.display = 'none'
+      }
+
+      return () => {
+        // Restore navigation when modal closes
+        if (desktopNav) {
+          desktopNav.style.display = ''
+        }
+        if (mobileNav) {
+          mobileNav.style.display = ''
+        }
+      }
+    }
+  }, [showKYCModal])
+
   // Переводы и табы
   const t = translations[language]
   const tabs = getTabs(t)

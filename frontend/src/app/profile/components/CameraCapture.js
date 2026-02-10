@@ -430,7 +430,7 @@ export default function CameraCapture({
 
       {/* Controls */}
       <div style={{
-        padding: '20px',
+        padding: isMobile ? '20px 20px 100px 20px' : '20px',  // ✅ Добавлен отступ снизу для мобильных
         background: 'rgba(0, 0, 0, 0.9)',
         borderTop: '1px solid rgba(255, 255, 255, 0.1)',
         display: 'flex',
